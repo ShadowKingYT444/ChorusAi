@@ -1,0 +1,36 @@
+[project]
+name = "chorus-orchestrator"
+version = "0.1.0"
+description = "Chorus orchestrator backend service"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116.0",
+  "httpx>=0.28.0",
+  "numpy>=1.26.0",
+  "pydantic>=2.7.0",
+  "sentence-transformers>=2.7.0",
+  "uvicorn>=0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+]
+agent = [
+  "websockets>=13.0",
+]
+dolly = [
+  "polars>=1.0.0",
+  "fsspec>=2024.1.0",
+  "huggingface_hub>=0.24.0",
+  "tokenizers>=0.20.0",
+]
+train = [
+  "torch>=2.0.0",
+  "tqdm>=4.66.0",
+  "transformers>=4.36.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

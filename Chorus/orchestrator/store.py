@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+import asyncio
+import time
+import uuid
+from collections import defaultdict
+from typing import Any
+
+from orchestrator.models import (
+    CreateJobRequest,
+    JobPublicView,
+    JobRecord,
+    JobSpec,
+    OperatorView,
+    PeerEntry,
+    PeerStatus,
+    RegisterAgentsRequest,
+    SlotRuntime,
+)
+
+
+class PeerRegistry:
+    """In-memory live peer table for discovery/signaling."""
+
+    def __init__(self) -> None:
+        self._peers: dict[str, PeerEntry] = {}
+        self._known_peers: dict[str, PeerEntry] = {}
+        self._lock = asyncio.Lock()
+
+    async def register(
+        self,
+        peer_id: str,
+        model: str,
+        *,
+        address: str | None = None,
+        protocol_version: str = "1",
+        status: PeerStatus = PeerStatus.idle,
+    ) -> PeerEntry:
+        async with self._lock:
+            now = time.time()
+            entry = PeerEntry(
+                peer_id=peer_id,
+                address=address,
+                model=model,
+                protocol_version=protocol_version,
+                joined_at=now,
+                last_seen=now,
+                status=status,
+            )
+            self._peers[peer_id] = entry
+            self._known_peers[peer_id] = entry.model_copy(deep=True)
+            return entry
+
+    async def unregister(self, peer_id: str) -> None:
+        async with self._lock:
+            existing = self._peers.pop(peer_id, None)
+            if existing is not None:
+                existing.last_seen = time.time()
+                self._known_peers[peer_id] = existing.model_copy(deep=True)
+
+    async def set_status(self, peer_id: str, status: PeerStatus) -> PeerEntry | None:
+        async with self._lock:
+            entry = self._peers.get(peer_id)
+            if entry is None:
+                return None
+            entry.status = status
+            entry.last_seen = time.time()
+            self._known_peers[peer_id] = entry.model_copy(deep=True)
+            return entry
+
+    async def set_address(self, peer_id: str, address: str | None) -> PeerEntry | None:
+        async with self._lock:
+            entry = self._peers.get(peer_id)
+            if entry is None:
+                return None
+            entry.address = address.strip() if address and address.strip() else None
+            entry.last_seen = time.time()
+            self._known_peers[peer_id] = entry.model_copy(deep=True)
+            return entry
+
+    async def touch(self, peer_id: str) -> PeerEntry | None:
+        async with self._lock:
+            entry = self._peers.get(peer_id)
+            if entry is None:
+                return None
+            entry.last_seen = time.time()
+            self._known_peers[peer_id] = entry.model_copy(deep=True)
+            return entry
+
+    async def list_peers(self) -> list[PeerEntry]:
+        async with self._lock:
+            return [entry.model_copy(deep=True) for entry in self._peers.values()]
+
+    async def count(self) -> int:
+        async with self._lock:
+            return len(self._peers)
+
+    async def get_peer_ids(self) -> list[str]:
+        async with self._lock:
+            return list(self._peers.keys())
+
+    async def list_known_peers(self, max_age_s: float = 300.0) -> list[PeerEntry]:
+        cutoff = time.time() - max_age_s
+        async with self._lock:
+            return [
+                e.model_copy(deep=True)
+                for e in self._known_peers.values()
+                if e.last_seen >= cutoff
+            ]
+
+    async def merge_known_peers(self, peers: list[PeerEntry]) -> None:
+        async with self._lock:
+            for p in peers:
+                existing = self._known_peers.get(p.peer_id)
+                if existing is None or p.last_seen > existing.last_seen:
+                    self._known_peers[p.peer_id] = p.model_copy(deep=True)
+
+
+class JobStore:
+    """In-memory job state plus lightweight event fan-out for local runs."""
+
+    def __init__(self) -> None:
+        self._jobs: dict[str, JobRecord] = {}
+        self._lock = asyncio.Lock()
+        self._event_log: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        self._subscribers: dict[str, set[asyncio.Queue[dict[str, Any]]]] = defaultdict(set)
+
+    async def create_job(self, req: CreateJobRequest | JobSpec) -> JobRecord:
+        spec = req if isinstance(req, JobSpec) else JobSpec.model_validate(req.model_dump())
+        job = JobRecord(job_id=str(uuid.uuid4()), spec=spec)
+        async with self._lock:
+            self._jobs[job.job_id] = job
+        return job
+
+    async def get_job(self, job_id: str) -> JobRecord | None:
+        async with self._lock:
+            return self._jobs.get(job_id)
+
+    async def update_job(self, job: JobRecord) -> None:
+        async with self._lock:
+            self._jobs[job.job_id] = job
+
+    async def register_agents(self, job_id: str, req: RegisterAgentsRequest) -> JobRecord | None:
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if len(req.slots) != job.spec.agent_count:
+                raise ValueError(
+                    f"expected {job.spec.agent_count} slots, received {len(req.slots)}"
+                )
+            job.slots = {
+                slot_id: SlotRuntime(slot_id=slot_id, registration=registration)
+                for slot_id, registration in req.slots.items()
+            }
+            job.error = None
+            self._jobs[job_id] = job
+            return job
+
+    async def public_view(self, job_id: str) -> JobPublicView | None:
+        job = await self.get_job(job_id)
+        if job is None:
+            return None
+        return JobPublicView(
+            job_id=job.job_id,
+            status=job.status,
+            current_round=job.current_round,
+            error=job.error,
+            settlement_preview=job.settlement_preview,
+        )
+
+    async def operator_view(self, job_id: str) -> OperatorView | None:
+        job = await self.get_job(job_id)
+        if job is None:
+            return None
+        return OperatorView(
+            job_id=job.job_id,
+            status=job.status,
+            current_round=job.current_round,
+            error=job.error,
+            rounds=job.rounds_data,
+            settlement_preview=job.settlement_preview,
+        )
+
+    async def emit(self, job_id: str, event_type: str, payload: dict[str, Any]) -> None:
+        event = {"type": event_type, **payload}
+        async with self._lock:
+            self._event_log[job_id].append(event)
+            subscribers = list(self._subscribers.get(job_id, set()))
+        for queue in subscribers:
+            await queue.put(event)
+
+    async def subscribe(self, job_id: str) -> tuple[asyncio.Queue[dict[str, Any]], list[dict[str, Any]]]:
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        async with self._lock:
+            self._subscribers[job_id].add(queue)
+            history = list(self._event_log.get(job_id, []))
+        return queue, history
+
+    async def unsubscribe(self, job_id: str, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        async with self._lock:
+            subscribers = self._subscribers.get(job_id)
+            if subscribers is None:
+                return
+            subscribers.discard(queue)
+            if not subscribers:
+                self._subscribers.pop(job_id, None)

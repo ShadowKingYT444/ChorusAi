@@ -1,0 +1,109 @@
+import { NextResponse, type NextRequest } from 'next/server'
+import { isAllowedChatProxyTarget } from '@/lib/lan/chat-proxy-allow'
+import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
+
+export const runtime = 'nodejs'
+
+function proxyDisabled(): boolean {
+  return process.env.NEXT_LAN_CHAT_PROXY === '0'
+}
+
+function collectFetchErrorChain(err: unknown): string[] {
+  const parts: string[] = []
+  let cur: unknown = err
+  for (let i = 0; i < 6 && cur; i++) {
+    if (cur instanceof Error) {
+      parts.push(cur.message)
+      const ne = cur as NodeJS.ErrnoException
+      if (ne.code) parts.push(`code=${ne.code}`)
+      cur = (cur as { cause?: unknown }).cause
+      continue
+    }
+    if (typeof cur === 'object' && cur !== null && 'code' in cur) {
+      parts.push(`code=${String((cur as { code: unknown }).code)}`)
+      break
+    }
+    parts.push(String(cur))
+    break
+  }
+  return parts.filter(Boolean)
+}
+
+function upstreamConnectFailureMessage(err: unknown, completionUrl: string): string {
+  const chain = collectFetchErrorChain(err).join(' · ')
+  return [
+    `Could not reach Ollama at ${completionUrl}.`,
+    chain ? `Node: ${chain}.` : '',
+    'This request runs on the PC where Next.js runs (npm run dev), not in your browser — that machine must reach Ollama on the network.',
+    'On the Ollama PC: set OLLAMA_HOST=0.0.0.0 (Windows: system environment variable, then restart Ollama) so it listens on your LAN IP, not only 127.0.0.1.',
+    'From the Next PC, test: curl or Invoke-WebRequest that same URL (GET /api/tags on the Ollama root is fine).',
+    'If Next and Ollama are on the same PC but you used a LAN IP, Windows may still refuse the port until Ollama binds 0.0.0.0; allow TCP 11434 in Windows Firewall if prompted.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+export async function POST(req: NextRequest) {
+  if (proxyDisabled()) {
+    return NextResponse.json({ error: 'LAN chat proxy disabled (NEXT_LAN_CHAT_PROXY=0).' }, { status: 503 })
+  }
+
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+  }
+
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Expected JSON object.' }, { status: 400 })
+  }
+
+  const rec = body as Record<string, unknown>
+  const targetBase = typeof rec.targetBase === 'string' ? rec.targetBase : ''
+  if (!targetBase.trim()) {
+    return NextResponse.json({ error: 'Missing targetBase.' }, { status: 400 })
+  }
+
+  const completionUrl = normalizeOpenAIChatCompletionsUrl(targetBase)
+  if (!completionUrl) {
+    return NextResponse.json({ error: 'Invalid targetBase URL.' }, { status: 400 })
+  }
+
+  let host: string
+  try {
+    host = new URL(completionUrl).hostname
+  } catch {
+    return NextResponse.json({ error: 'Could not parse target URL.' }, { status: 400 })
+  }
+
+  if (!isAllowedChatProxyTarget(host)) {
+    return NextResponse.json(
+      {
+        error:
+          'Proxy target not allowed. Use a LAN IP (10.x / 172.16–31.x / 192.168.x) so this Next server can reach Ollama, or set NEXT_CHAT_PROXY_EXTRA_HOSTS for specific hostnames. For http://127.0.0.1:11434 the browser must call Ollama directly — set OLLAMA_ORIGINS to include your Next UI origin.',
+      },
+      { status: 400 },
+    )
+  }
+
+  const { targetBase: _t, ...openaiBody } = rec
+  if (!openaiBody || typeof openaiBody !== 'object') {
+    return NextResponse.json({ error: 'Invalid OpenAI body.' }, { status: 400 })
+  }
+
+  try {
+    const upstream = await fetch(completionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(openaiBody),
+    })
+    const text = await upstream.text()
+    return new NextResponse(text, {
+      status: upstream.status,
+      headers: { 'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json' },
+    })
+  } catch (e) {
+    return NextResponse.json({ error: upstreamConnectFailureMessage(e, completionUrl) }, { status: 502 })
+  }
+}
