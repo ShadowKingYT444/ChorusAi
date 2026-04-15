@@ -4,7 +4,7 @@ import asyncio
 import time
 import uuid
 from collections import defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from orchestrator.models import (
     CreateJobRequest,
@@ -18,6 +18,28 @@ from orchestrator.models import (
     SlotRuntime,
 )
 
+if TYPE_CHECKING:
+    from orchestrator.db import ChorusDB
+
+
+def _schedule(coro) -> None:
+    """Fire-and-forget: schedule coro on running loop, silently drop if none."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            coro.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    try:
+        loop.create_task(coro)
+    except Exception:  # noqa: BLE001
+        try:
+            coro.close()
+        except Exception:  # noqa: BLE001
+            pass
+
 
 class PeerRegistry:
     """In-memory live peer table for discovery/signaling."""
@@ -26,6 +48,20 @@ class PeerRegistry:
         self._peers: dict[str, PeerEntry] = {}
         self._known_peers: dict[str, PeerEntry] = {}
         self._lock = asyncio.Lock()
+        self._db: "ChorusDB | None" = None
+
+    def attach_db(self, db: "ChorusDB") -> None:
+        self._db = db
+
+    def _mirror_peer(self, entry: PeerEntry) -> None:
+        if self._db is None:
+            return
+        _schedule(self._db.mirror_peer(entry.model_copy(deep=True)))
+
+    def _mirror_remove(self, peer_id: str) -> None:
+        if self._db is None:
+            return
+        _schedule(self._db.remove_peer(peer_id))
 
     async def register(
         self,
@@ -35,6 +71,8 @@ class PeerRegistry:
         address: str | None = None,
         protocol_version: str = "1",
         status: PeerStatus = PeerStatus.idle,
+        pubkey: str | None = None,
+        verified: bool = False,
     ) -> PeerEntry:
         async with self._lock:
             now = time.time()
@@ -46,9 +84,12 @@ class PeerRegistry:
                 joined_at=now,
                 last_seen=now,
                 status=status,
+                pubkey=pubkey,
+                verified=verified,
             )
             self._peers[peer_id] = entry
             self._known_peers[peer_id] = entry.model_copy(deep=True)
+            self._mirror_peer(entry)
             return entry
 
     async def unregister(self, peer_id: str) -> None:
@@ -57,6 +98,7 @@ class PeerRegistry:
             if existing is not None:
                 existing.last_seen = time.time()
                 self._known_peers[peer_id] = existing.model_copy(deep=True)
+        self._mirror_remove(peer_id)
 
     async def set_status(self, peer_id: str, status: PeerStatus) -> PeerEntry | None:
         async with self._lock:
@@ -66,6 +108,7 @@ class PeerRegistry:
             entry.status = status
             entry.last_seen = time.time()
             self._known_peers[peer_id] = entry.model_copy(deep=True)
+            self._mirror_peer(entry)
             return entry
 
     async def set_address(self, peer_id: str, address: str | None) -> PeerEntry | None:
@@ -76,6 +119,7 @@ class PeerRegistry:
             entry.address = address.strip() if address and address.strip() else None
             entry.last_seen = time.time()
             self._known_peers[peer_id] = entry.model_copy(deep=True)
+            self._mirror_peer(entry)
             return entry
 
     async def touch(self, peer_id: str) -> PeerEntry | None:
@@ -85,6 +129,7 @@ class PeerRegistry:
                 return None
             entry.last_seen = time.time()
             self._known_peers[peer_id] = entry.model_copy(deep=True)
+            self._mirror_peer(entry)
             return entry
 
     async def list_peers(self) -> list[PeerEntry]:
@@ -109,11 +154,16 @@ class PeerRegistry:
             ]
 
     async def merge_known_peers(self, peers: list[PeerEntry]) -> None:
+        merged: list[PeerEntry] = []
         async with self._lock:
             for p in peers:
                 existing = self._known_peers.get(p.peer_id)
                 if existing is None or p.last_seen > existing.last_seen:
-                    self._known_peers[p.peer_id] = p.model_copy(deep=True)
+                    copy = p.model_copy(deep=True)
+                    self._known_peers[p.peer_id] = copy
+                    merged.append(copy)
+        for entry in merged:
+            self._mirror_peer(entry)
 
 
 class JobStore:
@@ -124,12 +174,23 @@ class JobStore:
         self._lock = asyncio.Lock()
         self._event_log: dict[str, list[dict[str, Any]]] = defaultdict(list)
         self._subscribers: dict[str, set[asyncio.Queue[dict[str, Any]]]] = defaultdict(set)
+        self._db: "ChorusDB | None" = None
+        self._seq: dict[str, int] = {}
+
+    def attach_db(self, db: "ChorusDB") -> None:
+        self._db = db
+
+    def _mirror_job(self, record: JobRecord) -> None:
+        if self._db is None:
+            return
+        _schedule(self._db.mirror_job(record.model_copy(deep=True)))
 
     async def create_job(self, req: CreateJobRequest | JobSpec) -> JobRecord:
         spec = req if isinstance(req, JobSpec) else JobSpec.model_validate(req.model_dump())
         job = JobRecord(job_id=str(uuid.uuid4()), spec=spec)
         async with self._lock:
             self._jobs[job.job_id] = job
+        self._mirror_job(job)
         return job
 
     async def get_job(self, job_id: str) -> JobRecord | None:
@@ -139,6 +200,7 @@ class JobStore:
     async def update_job(self, job: JobRecord) -> None:
         async with self._lock:
             self._jobs[job.job_id] = job
+        self._mirror_job(job)
 
     async def register_agents(self, job_id: str, req: RegisterAgentsRequest) -> JobRecord | None:
         async with self._lock:
@@ -155,7 +217,8 @@ class JobStore:
             }
             job.error = None
             self._jobs[job_id] = job
-            return job
+        self._mirror_job(job)
+        return job
 
     async def public_view(self, job_id: str) -> JobPublicView | None:
         job = await self.get_job(job_id)
@@ -167,6 +230,8 @@ class JobStore:
             current_round=job.current_round,
             error=job.error,
             settlement_preview=job.settlement_preview,
+            final_answer=job.final_answer,
+            citations=job.citations,
         )
 
     async def operator_view(self, job_id: str) -> OperatorView | None:
@@ -180,13 +245,20 @@ class JobStore:
             error=job.error,
             rounds=job.rounds_data,
             settlement_preview=job.settlement_preview,
+            final_answer=job.final_answer,
+            citations=job.citations,
         )
 
     async def emit(self, job_id: str, event_type: str, payload: dict[str, Any]) -> None:
         event = {"type": event_type, **payload}
+        ts = time.time()
         async with self._lock:
             self._event_log[job_id].append(event)
+            self._seq[job_id] = self._seq.get(job_id, 0) + 1
+            seq = self._seq[job_id]
             subscribers = list(self._subscribers.get(job_id, set()))
+        if self._db is not None:
+            _schedule(self._db.append_event(job_id, seq, ts, event_type, dict(payload)))
         for queue in subscribers:
             await queue.put(event)
 

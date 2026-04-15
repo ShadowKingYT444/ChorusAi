@@ -55,3 +55,13 @@ node_modules
 
 # Ollama
 bin/
+
+# Ed25519 private keys (orchestrator + agent)
+*.key
+
+# Runtime artifacts
+chorus.db
+chorus.db-*
+chorus_smoke.db*
+chorus_seed_verify.db*
+.smoke_logs/

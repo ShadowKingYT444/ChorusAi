@@ -32,6 +32,8 @@ class PeerEntry(BaseModel):
     joined_at: float
     last_seen: float
     status: PeerStatus = PeerStatus.idle
+    pubkey: str | None = None
+    verified: bool = False
 
 
 class PeersResponse(BaseModel):
@@ -67,6 +69,9 @@ class RegisterMessage(BaseModel):
     model: str
     protocol_version: str = "1"
     status: PeerStatus = PeerStatus.idle
+    pubkey: str | None = None
+    signed_ts: str | None = None
+    ts: float | None = None
 
 
 class SetStatusMessage(BaseModel):
@@ -255,6 +260,8 @@ class JobRecord(BaseModel):
     rounds_data: list[RoundAudit] = Field(default_factory=list)
     current_round: int | None = None
     settlement_preview: dict[str, Any] | None = None
+    final_answer: str | None = None
+    citations: list[str] | None = None
     error: str | None = None
 
 
@@ -264,6 +271,8 @@ class JobPublicView(BaseModel):
     current_round: int | None
     error: str | None
     settlement_preview: dict[str, Any] | None = None
+    final_answer: str | None = None
+    citations: list[str] | None = None
 
 
 class OperatorView(BaseModel):
@@ -273,3 +282,5 @@ class OperatorView(BaseModel):
     error: str | None
     rounds: list[RoundAudit]
     settlement_preview: dict[str, Any] | None = None
+    final_answer: str | None = None
+    citations: list[str] | None = None

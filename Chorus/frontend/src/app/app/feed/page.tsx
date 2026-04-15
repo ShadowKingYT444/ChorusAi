@@ -6,6 +6,7 @@ import { useSimulation } from '@/hooks/use-simulation'
 import { Suspense, useState, useEffect, useRef } from 'react'
 import { Activity, Clock, Database, Zap, Server } from 'lucide-react'
 import { useSharedJobRuntime } from '@/lib/runtime/job-runtime-provider'
+import { useOrchestratorMetrics } from '@/lib/runtime/use-metrics'
 
 // ─── Animated waveform sparkline ──────────────────────────────────────────────
 
@@ -164,6 +165,7 @@ function ClusterActivity() {
 function FeedPageContent() {
   const job = useSimulation()
   const runtime = useSharedJobRuntime()
+  const metrics = useOrchestratorMetrics(3000)
   const [osName, setOsName] = useState('LOCAL HOST')
   useEffect(() => {
     if (typeof navigator !== 'undefined') {
@@ -267,7 +269,23 @@ function FeedPageContent() {
                   {connectedPeers.length > 0 ? (
                     <ul className="list-none m-0 mt-1 p-0 max-h-[160px] overflow-auto pr-1 space-y-1.5">
                       {connectedPeers.map((peer) => (
-                        <li key={peer.peer_id} className="text-white/75 break-all leading-tight">
+                        <li key={peer.peer_id} className="text-white/75 break-all leading-tight flex items-center gap-1.5">
+                          {peer.verified ? (
+                            <span
+                              title={`Ed25519 verified · ${peer.pubkey?.slice(0, 12)}…`}
+                              className="inline-block"
+                              style={{ color: 'var(--color-secure, #5ee29d)' }}
+                            >
+                              ✓
+                            </span>
+                          ) : (
+                            <span
+                              title="unverified peer (no signature)"
+                              className="text-white/25"
+                            >
+                              ·
+                            </span>
+                          )}
                           <span className="font-mono">{peer.peer_id.slice(0, 10)}…</span>
                           {peer.address ? (
                             <span className="text-white/50"> · {peer.address}</span>
@@ -285,6 +303,28 @@ function FeedPageContent() {
               </div>
             </div>
 
+            {/* Live orchestrator metrics */}
+            {metrics.fresh && (
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: 'PEERS', value: metrics.activePeers },
+                  { label: 'IN-FLIGHT', value: metrics.jobsInFlight },
+                  { label: 'AVG RT (ms)', value: Math.round(metrics.avgRoundLatencyMs) },
+                  { label: 'PRUNE %', value: `${Math.round(metrics.pruneRate * 100)}` },
+                ].map((t) => (
+                  <div
+                    key={t.label}
+                    className="bg-white/[0.02] border border-white/5 p-3 rounded-lg"
+                  >
+                    <div className="font-mono text-[8px] text-white/35 uppercase tracking-widest mb-1">
+                      {t.label}
+                    </div>
+                    <div className="font-mono text-base text-white/85">{t.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Cluster Activity — 3 animated waveform cards */}
             <ClusterActivity />
 
@@ -301,6 +341,9 @@ function FeedPageContent() {
              messages={runtime.messages.length > 0 ? runtime.messages : undefined}
              totalSlots={runtime.session?.agentCount ?? job?.agentCount ?? connectedPeers.length}
              live={Boolean(runtime.session)}
+             finalAnswer={runtime.finalAnswer}
+             citations={runtime.citations}
+             settlement={runtime.settlement}
            />
         </div>
       </div>

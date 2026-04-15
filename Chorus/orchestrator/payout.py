@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import time
 from math import floor
+from typing import Any
 
 from orchestrator.models import JobRecord, PruneStatus
 
@@ -36,6 +39,25 @@ def compute_settlement(job: JobRecord, w_c: float = 1.0, w_f: float = 0.5) -> di
         raw_payouts[slot_id] = floor_each + extra
 
     rounded = _largest_remainder_round(raw_payouts, pool)
+
+    breakdown: dict[str, dict[str, float]] = {}
+    for slot_id in eligible_slot_ids:
+        slot = job.slots[slot_id]
+        consensus_bonus = 0.0
+        dissent_bonus = 0.0
+        if total_impact > 0:
+            consensus_bonus = extra_pool * (w_c * slot.c_impact) / total_impact
+            dissent_bonus = extra_pool * (w_f * slot.f_impact) / total_impact
+        else:
+            equal_share = extra_pool / n
+            consensus_bonus = equal_share
+        breakdown[slot_id] = {
+            "floor": round(floor_each, 2),
+            "consensus_bonus": round(consensus_bonus, 2),
+            "dissent_bonus": round(dissent_bonus, 2),
+            "total": rounded[slot_id],
+        }
+
     return {
         "total_pool": pool,
         "eligible_agents": n,
@@ -43,6 +65,7 @@ def compute_settlement(job: JobRecord, w_c: float = 1.0, w_f: float = 0.5) -> di
         "extra_pool": extra_pool,
         "impact_weights": impacts,
         "payouts": rounded,
+        "payout_breakdown": breakdown,
     }
 
 
@@ -66,3 +89,23 @@ def _largest_remainder_round(payouts: dict[str, float], total: float) -> dict[st
         base_cents[slot_id] += 1
 
     return {slot_id: cents / 100.0 for slot_id, cents in base_cents.items()}
+
+
+def attach_receipt(preview: dict[str, Any], job_id: str, keypair) -> dict[str, Any]:
+    """Attach a signed receipt to `preview` and return it.
+
+    Signs `json.dumps(payouts, sort_keys=True) + ":" + job_id + ":" + str(issued_at)`
+    with the orchestrator's Ed25519 keypair. Adds `preview["receipt"]` with
+    `signature`, `issued_at`, and `pubkey` (base64).
+    """
+    payouts = preview.get("payouts", {}) or {}
+    issued_at = time.time()
+    payload_str = (
+        json.dumps(payouts, sort_keys=True) + ":" + str(job_id) + ":" + str(issued_at)
+    )
+    preview["receipt"] = {
+        "signature": keypair.sign_b64(payload_str),
+        "issued_at": issued_at,
+        "pubkey": keypair.pubkey_b64(),
+    }
+    return preview

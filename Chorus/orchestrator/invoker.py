@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 from urllib.parse import urlparse
 
+import anyio
 import httpx
+import sniffio
 
 from orchestrator.broadcast_completions import normalize_completion_url
 from orchestrator.models import CompletionResult, JobRecord, SlotRegistration
+
+logger = logging.getLogger(__name__)
 
 OLLAMA_MODEL = "qwen2.5:0.5b"
 
@@ -22,6 +27,24 @@ class AgentInvoker:
         self.temperature = float(os.getenv("ORC_TEMPERATURE", "0.7"))
         self.allow_local = os.getenv("ORC_ALLOW_LOCALHOST", "1").strip() == "1"
         self.completion_model = OLLAMA_MODEL
+        # Key by (url, async-library) so a semaphore created on one backend
+        # (e.g. asyncio test variant) isn't reused by another (trio variant).
+        self._per_peer_sem: dict[tuple[str, str], anyio.Semaphore] = {}
+        self._peer_concurrency = max(1, int(os.getenv("ORC_PEER_CONCURRENCY", "2")))
+        self._peer_wait_s = float(os.getenv("ORC_PEER_WAIT_S", "30"))
+
+    def _get_peer_semaphore(self, url_key: str) -> anyio.Semaphore:
+        try:
+            backend = sniffio.current_async_library()
+        except sniffio.AsyncLibraryNotFoundError:
+            backend = "asyncio"
+        key = (url_key, backend)
+        # Dict ops are atomic — no awaits between get and set, so no lock needed.
+        sem = self._per_peer_sem.get(key)
+        if sem is None:
+            sem = anyio.Semaphore(self._peer_concurrency)
+            self._per_peer_sem[key] = sem
+        return sem
 
     async def invoke(
         self,
@@ -36,66 +59,82 @@ class AgentInvoker:
         target_url = normalize_completion_url(str(registration.completion_base_url))
         self._validate_target(target_url)
 
-        headers = {
-            "Content-Type": "application/json",
-            "X-Chorus-Job-Id": job.job_id,
-            "X-Chorus-Slot-Id": slot_id,
-            "X-Chorus-Round": str(round_index),
-        }
-        if registration.bearer_token:
-            headers["Authorization"] = f"Bearer {registration.bearer_token}"
-
-        payload = {
-            "model": self.completion_model,
-            "messages": [
-                {"role": "system", "content": persona + "\n\nRespond in 2-3 sentences. Be direct and specific. Do not repeat the prompt, list instructions, or explain your reasoning process."},
-                {
-                    "role": "user",
-                    "content": (
-                        "### Context\n"
-                        f"{context_text}\n\n"
-                        "### Prompt\n"
-                        f"{job.spec.prompt}\n"
-                    ),
-                },
-            ],
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
-            "user": f"{job.job_id}:{slot_id}",
-        }
-
-        start = time.perf_counter()
+        peer_key = str(registration.completion_base_url).strip().rstrip("/")
+        sem = self._get_peer_semaphore(peer_key)
+        acquired = False
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-                response = await client.post(target_url, headers=headers, json=payload)
-            latency_ms = int((time.perf_counter() - start) * 1000)
-            if response.status_code // 100 != 2:
+            with anyio.fail_after(self._peer_wait_s):
+                await sem.acquire()
+                acquired = True
+        except TimeoutError:
+            logger.warning("peer_busy: %s slot=%s job=%s", peer_key, slot_id, job.job_id)
+            return CompletionResult(ok=False, error="peer_busy", latency_ms=0)
+
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "X-Chorus-Job-Id": job.job_id,
+                "X-Chorus-Slot-Id": slot_id,
+                "X-Chorus-Round": str(round_index),
+            }
+            if registration.bearer_token:
+                headers["Authorization"] = f"Bearer {registration.bearer_token}"
+
+            payload = {
+                "model": self.completion_model,
+                "messages": [
+                    {"role": "system", "content": persona + "\n\nRespond in 2-3 sentences. Be direct and specific. Do not repeat the prompt, list instructions, or explain your reasoning process."},
+                    {
+                        "role": "user",
+                        "content": (
+                            "### Context\n"
+                            f"{context_text}\n\n"
+                            "### Prompt\n"
+                            f"{job.spec.prompt}\n"
+                        ),
+                    },
+                ],
+                "max_tokens": self.max_tokens,
+                "temperature": self.temperature,
+                "user": f"{job.job_id}:{slot_id}",
+            }
+
+            start = time.perf_counter()
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                    response = await client.post(target_url, headers=headers, json=payload)
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                if response.status_code // 100 != 2:
+                    return CompletionResult(
+                        ok=False,
+                        error=f"http_{response.status_code}",
+                        latency_ms=latency_ms,
+                    )
+                data = response.json()
+                text = (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content")
+                )
+                finish_reason = data.get("choices", [{}])[0].get("finish_reason")
                 return CompletionResult(
-                    ok=False,
-                    error=f"http_{response.status_code}",
+                    ok=text is not None,
+                    text=text,
+                    finish_reason=finish_reason,
+                    error=None if text else "missing_content",
                     latency_ms=latency_ms,
                 )
-            data = response.json()
-            text = (
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content")
-            )
-            finish_reason = data.get("choices", [{}])[0].get("finish_reason")
-            return CompletionResult(
-                ok=text is not None,
-                text=text,
-                finish_reason=finish_reason,
-                error=None if text else "missing_content",
-                latency_ms=latency_ms,
-            )
-        except Exception as exc:  # noqa: BLE001
-            latency_ms = int((time.perf_counter() - start) * 1000)
-            return CompletionResult(
-                ok=False,
-                error=str(exc),
-                latency_ms=latency_ms,
-            )
+            except Exception as exc:  # noqa: BLE001
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                logger.exception("invoker error for %s slot=%s: %s", peer_key, slot_id, exc)
+                return CompletionResult(
+                    ok=False,
+                    error=str(exc),
+                    latency_ms=latency_ms,
+                )
+        finally:
+            if acquired:
+                sem.release()
 
     def _validate_target(self, url: str) -> None:
         parsed = urlparse(url)

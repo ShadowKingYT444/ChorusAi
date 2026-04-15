@@ -30,6 +30,21 @@ import httpx
 import websockets
 from websockets.asyncio.client import ClientConnection
 
+from agent_backend.identity import load_or_create_agent_keypair
+
+_AGENT_KEYPAIR = None
+
+
+def _get_keypair():
+    global _AGENT_KEYPAIR
+    if _AGENT_KEYPAIR is None:
+        try:
+            _AGENT_KEYPAIR = load_or_create_agent_keypair()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("agent keypair unavailable: %s", exc)
+            _AGENT_KEYPAIR = False
+    return _AGENT_KEYPAIR or None
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -107,17 +122,23 @@ async def _run_agent(peer_id: str) -> None:
 
 
 async def _agent_session(ws: ClientConnection, peer_id: str) -> None:
-    await ws.send(
-        json.dumps(
-            {
-                "type": "register",
-                "peer_id": peer_id,
-                "model": MODEL,
-                "protocol_version": "1",
-                "status": "idle",
-            }
-        )
-    )
+    register_payload: dict[str, Any] = {
+        "type": "register",
+        "peer_id": peer_id,
+        "model": MODEL,
+        "protocol_version": "1",
+        "status": "idle",
+    }
+    kp = _get_keypair()
+    if kp is not None:
+        ts = time.time()
+        try:
+            register_payload["pubkey"] = kp.pubkey_b64()
+            register_payload["ts"] = ts
+            register_payload["signed_ts"] = kp.sign_b64(f"{peer_id}:{ts}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[%s] failed to sign register: %s", peer_id, exc)
+    await ws.send(json.dumps(register_payload))
 
     raw_ack = await ws.recv()
     ack: dict[str, Any] = json.loads(raw_ack) if isinstance(raw_ack, (str, bytes)) else {}

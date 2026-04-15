@@ -3,6 +3,19 @@ export type PruneStatus = 'valid' | 'suspect' | 'pruned'
 export type PeerStatus = 'idle' | 'busy'
 
 // Legacy result/audit types are kept so existing UI adapters compile in Phase 1-2 mode.
+export interface PayoutBreakdown {
+  floor: number
+  consensus_bonus: number
+  dissent_bonus: number
+  total: number
+}
+
+export interface SettlementReceipt {
+  signature: string
+  issued_at: number
+  pubkey: string
+}
+
 export interface SettlementPreview {
   total_pool: number
   eligible_agents: number
@@ -10,6 +23,8 @@ export interface SettlementPreview {
   extra_pool: number
   impact_weights: Record<string, number>
   payouts: Record<string, number>
+  payout_breakdown?: Record<string, PayoutBreakdown>
+  receipt?: SettlementReceipt | null
 }
 
 export interface SlotRoundAudit {
@@ -64,12 +79,52 @@ export interface WsEdgeEvent {
   }
 }
 
+export interface WsRoundStartedEvent {
+  type: 'round_started'
+  round: number
+}
+
+export interface WsJobDoneEvent {
+  type: 'job_done'
+  round: number
+  payload: {
+    settlement_preview: SettlementPreview | null
+    final_answer?: string | null
+    citations?: string[] | null
+    receipt?: { signature: string; issued_at: number } | null
+  }
+}
+
+export interface WsJobFailedEvent {
+  type: 'job_failed'
+  payload: { error: string }
+}
+
+export interface WsFinalAnswerEvent {
+  type: 'final_answer'
+  round: number
+  payload: {
+    text: string
+    citations: string[]
+  }
+}
+
+export type JobStreamEvent =
+  | WsRoundStartedEvent
+  | WsAgentLineEvent
+  | WsEdgeEvent
+  | WsFinalAnswerEvent
+  | WsJobDoneEvent
+  | WsJobFailedEvent
+
 export interface PeerEntry {
   peer_id: string
   address?: string | null
   model: string
   joined_at: number
   status: PeerStatus
+  pubkey?: string | null
+  verified?: boolean
 }
 
 export interface PeersResponse {
@@ -211,6 +266,34 @@ export function isOrchestratorConfigured(): boolean {
 export function getSignalingWsUrl(): string {
   const base = ensureBaseUrl()
   return base.replace(/^http/i, 'ws') + '/ws/signaling'
+}
+
+export function getJobEventsWsUrl(jobId: string): string {
+  const base = ensureBaseUrl()
+  return base.replace(/^http/i, 'ws') + `/ws/jobs/${encodeURIComponent(jobId)}`
+}
+
+export function openJobEventsSocket(
+  jobId: string,
+  handlers: {
+    onEvent: (event: JobStreamEvent) => void
+    onOpen?: () => void
+    onError?: (err: Event | Error) => void
+    onClose?: () => void
+  },
+): WebSocket {
+  const ws = new WebSocket(getJobEventsWsUrl(jobId))
+  ws.onopen = () => handlers.onOpen?.()
+  ws.onmessage = (msg) => {
+    try {
+      handlers.onEvent(JSON.parse(msg.data) as JobStreamEvent)
+    } catch (error) {
+      handlers.onError?.(error as Error)
+    }
+  }
+  ws.onerror = (error) => handlers.onError?.(error)
+  ws.onclose = () => handlers.onClose?.()
+  return ws
 }
 
 function newRandomPeerToken(prefix: string): string {

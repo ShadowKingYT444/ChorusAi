@@ -6,11 +6,16 @@ import logging
 import os
 import uuid
 
-from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from orchestrator.broadcast_completions import post_chat_completion
 from orchestrator.engine import RoundEngine
+from orchestrator.lifespan import lifespan
+from orchestrator.logconfig import RequestIdMiddleware, configure_logging
+from orchestrator.metrics import METRICS
+from orchestrator.ratelimit import check_rate_limit
 from orchestrator.models import (
     BroadcastAssignment,
     BroadcastEnvelopeMessage,
@@ -39,12 +44,15 @@ from orchestrator.models import (
     SetAddressMessage,
     SetStatusMessage,
 )
+from orchestrator.crypto import verify_b64
+from orchestrator.identity import get_orchestrator_keypair
 from orchestrator.store import JobStore, PeerRegistry
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("orchestrator")
+configure_logging()
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Chorus Signaling", version="0.2.0")
+app = FastAPI(title="Chorus Signaling", version="0.2.0", lifespan=lifespan)
+orchestrator_keypair = get_orchestrator_keypair()
 registry = PeerRegistry()
 job_store = JobStore()
 round_engine = RoundEngine(job_store)
@@ -100,6 +108,8 @@ def _cors_middleware_kwargs() -> dict:
 
 
 app.add_middleware(CORSMiddleware, **_cors_middleware_kwargs())
+# RequestIdMiddleware must be added AFTER CORSMiddleware so it runs first for outgoing responses.
+app.add_middleware(RequestIdMiddleware)
 
 
 def _persona_index(peer_id: str, job_id: str, size: int) -> int:
@@ -135,7 +145,7 @@ def _make_plan(
             )
         )
 
-    print(f"[ORCHESTRATOR] Created plan {job_id} with {len(assignments)} assignments across {len(target_peer_ids)} peers")
+    logger.info("Created plan %s with %d assignments across %d peers", job_id, len(assignments), len(target_peer_ids))
     return BroadcastPlanResponse(
         job_id=job_id,
         expected_peers=len(target_peer_ids),
@@ -204,6 +214,8 @@ async def _register_peer(
     model: str,
     address: str | None = None,
     protocol_version: str = "1",
+    pubkey: str | None = None,
+    verified: bool = False,
 ) -> PeerEntry:
     async with _conn_lock:
         prev = _ws_by_peer_id.get(peer_id)
@@ -219,6 +231,8 @@ async def _register_peer(
         model,
         address=address,
         protocol_version=protocol_version,
+        pubkey=pubkey,
+        verified=verified,
     )
     return entry
 
@@ -254,6 +268,69 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/identity")
+async def identity() -> dict[str, str]:
+    """Return the orchestrator's Ed25519 public key (base64)."""
+    return {"pubkey": orchestrator_keypair.pubkey_b64()}
+
+
+@app.get("/ready")
+async def ready() -> JSONResponse:
+    db = getattr(app.state, "db", None)
+    if db is None:
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+    ok = await db.ready_check()
+    if not ok:
+        return JSONResponse({"status": "fail"}, status_code=503)
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/chats")
+async def get_chats(limit: int = 20, offset: int = 0) -> dict:
+    db = getattr(app.state, "db", None)
+    if db is None:
+        return {"chats": []}
+    return {"chats": await db.list_chats(limit=limit, offset=offset)}
+
+
+@app.get("/chats/{job_id}")
+async def get_chat(job_id: str) -> dict:
+    db = getattr(app.state, "db", None)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    chat = await db.get_chat(job_id)
+    if not chat:
+        raise HTTPException(status_code=404, detail="not_found")
+    return chat
+
+
+async def _refresh_live_gauges() -> None:
+    """Pull current live counts into METRICS.gauges at request time."""
+    METRICS.gauge("active_peers", float(await registry.count()))
+    jobs_running = 0
+    jobs_in_flight = 0
+    async with job_store._lock:  # type: ignore[attr-defined]
+        for job in job_store._jobs.values():  # type: ignore[attr-defined]
+            if job.status.value == "running":
+                jobs_running += 1
+            if job.status.value in ("running", "pending"):
+                jobs_in_flight += 1
+    METRICS.gauge("jobs_running", float(jobs_running))
+    METRICS.gauge("jobs_in_flight", float(jobs_in_flight))
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def get_metrics_prom() -> PlainTextResponse:
+    await _refresh_live_gauges()
+    return PlainTextResponse(METRICS.render_prom(), media_type="text/plain; version=0.0.4")
+
+
+@app.get("/metrics.json")
+async def get_metrics_json() -> dict:
+    await _refresh_live_gauges()
+    return METRICS.snapshot()
+
+
 def _require_operator_token(header_value: str | None) -> None:
     expected = os.getenv("ORC_OPERATOR_TOKEN", "").strip()
     if expected and header_value != expected:
@@ -261,7 +338,15 @@ def _require_operator_token(header_value: str | None) -> None:
 
 
 @app.post("/jobs", response_model=CreateJobResponse)
-async def create_job(req: CreateJobRequest) -> CreateJobResponse:
+async def create_job(req: CreateJobRequest, request: Request) -> CreateJobResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    retry_after = await check_rate_limit(client_ip)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="rate_limited",
+            headers={"Retry-After": str(max(1, int(retry_after)))},
+        )
     job = await job_store.create_job(req)
     return CreateJobResponse(job_id=job.job_id, status=job.status)
 
@@ -386,6 +471,7 @@ async def broadcast_invoke_completions(req: BroadcastInvokeRequest) -> dict[str,
     ]
     results: list[dict] = list(await asyncio.gather(*tasks)) if tasks else []
     buf = _job_response_buffer.setdefault(req.job_id, [])
+    dropped = 0
     for res in results:
         payload = {
             "type": "job_response",
@@ -398,8 +484,21 @@ async def broadcast_invoke_completions(req: BroadcastInvokeRequest) -> dict[str,
             "error": None if res.get("ok") else (res.get("error") or "invoke_failed"),
             "instance_id": res.get("instance_id"),
         }
-        if len(buf) < _JOB_BUFFER_MAX:
+        if len(buf) >= _JOB_BUFFER_MAX:
+            buf.pop(0)
             buf.append(payload)
+            dropped += 1
+        else:
+            buf.append(payload)
+    if dropped:
+        await job_store.emit(
+            req.job_id,
+            "buffer_dropped",
+            {"payload": {"dropped": dropped, "buffer_size": _JOB_BUFFER_MAX}},
+        )
+        logger.warning(
+            "broadcast_invoke buffer overflow for job=%s dropped=%d", req.job_id, dropped,
+        )
     return {"job_id": req.job_id, "invoked": len(results), "results": results}
 
 
@@ -411,7 +510,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
     
     # Get client IP for logging
     client_host = websocket.client.host if websocket.client else "unknown"
-    print(f"[ORCHESTRATOR] New connection from {client_host}. Total active: {len(_active_websockets)}")
+    logger.info("New connection from %s. Total active: %d", client_host, len(_active_websockets))
 
     current_peer_id: str | None = None
     try:
@@ -422,13 +521,26 @@ async def ws_signaling(websocket: WebSocket) -> None:
             if msg_type == "register":
                 payload = RegisterMessage.model_validate(message)
                 current_peer_id = payload.peer_id
-                print(f"[ORCHESTRATOR] Registering {current_peer_id} ({payload.model}) from {client_host}")
+                # Soft-mode signature verification: unsigned agents still register.
+                verified = False
+                if payload.pubkey and payload.signed_ts and payload.ts is not None:
+                    verified = verify_b64(
+                        payload.pubkey,
+                        f"{payload.peer_id}:{payload.ts}",
+                        payload.signed_ts,
+                    )
+                logger.info(
+                    "Registering %s (%s) from %s verified=%s",
+                    current_peer_id, payload.model, client_host, verified,
+                )
                 entry = await _register_peer(
                     websocket,
                     peer_id=payload.peer_id,
                     model=payload.model,
                     address=payload.address,
                     protocol_version=payload.protocol_version,
+                    pubkey=payload.pubkey,
+                    verified=verified,
                 )
                 await registry.set_status(payload.peer_id, payload.status)
                 peers_live = await registry.list_peers()
@@ -664,7 +776,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
                 payload_dict = payload.model_dump()
                 async with _conn_lock:
                     target_ws_list = list(_active_websockets)
-                print(f"[ORCHESTRATOR] Broadcasting job_ack for {payload.job_id} to {len(target_ws_list)} active sockets")
+                logger.debug("Broadcasting job_ack for %s to %d active sockets", payload.job_id, len(target_ws_list))
                 for target_ws in target_ws_list:
                     await _safe_send_json(target_ws, payload_dict)
                 continue
@@ -674,11 +786,24 @@ async def ws_signaling(websocket: WebSocket) -> None:
                 payload_dict = payload.model_dump()
                 # Buffer so prompter can fetch missed responses after reconnecting.
                 buf = _job_response_buffer.setdefault(payload.job_id, [])
-                if len(buf) < _JOB_BUFFER_MAX:
+                if len(buf) >= _JOB_BUFFER_MAX:
+                    # FIFO trim, then append; emit observability event.
+                    buf.pop(0)
+                    buf.append(payload_dict)
+                    await job_store.emit(
+                        payload.job_id,
+                        "buffer_dropped",
+                        {"payload": {"dropped": 1, "buffer_size": _JOB_BUFFER_MAX}},
+                    )
+                    logger.warning(
+                        "job_response buffer overflow for job=%s (max=%d)",
+                        payload.job_id, _JOB_BUFFER_MAX,
+                    )
+                else:
                     buf.append(payload_dict)
                 async with _conn_lock:
                     target_ws_list = list(_active_websockets)
-                print(f"[ORCHESTRATOR] Broadcasting job_response from {payload.peer_id} to {len(target_ws_list)} active sockets")
+                logger.debug("Broadcasting job_response from %s to %d active sockets", payload.peer_id, len(target_ws_list))
                 for target_ws in target_ws_list:
                     await _safe_send_json(target_ws, payload_dict)
                 continue
@@ -737,7 +862,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
             await websocket.send_json({"type": "error", "error": "unknown_message_type"})
 
     except WebSocketDisconnect:
-        print(f"[ORCHESTRATOR] Disconnect from {client_host}")
+        logger.info("Disconnect from %s", client_host)
     finally:
         async with _conn_lock:
             _active_websockets.discard(websocket)

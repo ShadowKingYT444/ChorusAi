@@ -205,7 +205,7 @@ export default function SetupPage() {
         icon={<Laptop size={18} />}
         eyebrow={`Step 1 of ${totalSteps}`}
         title="Pick your path"
-        subtitle="Chorus needs an OpenAI-compatible endpoint on your machine. Choose how it should be reached."
+        subtitle="Chorus is a swarm of peer LLMs. You host one — Chorus fans every prompt across the network, streams answers back live, merges them into a signed consensus response, and pays out by impact. You need an OpenAI-compatible endpoint on your machine; choose how it should be reached."
       >
         <div style={{ display: 'grid', gap: '0.7rem' }}>
           <PathCard
@@ -720,6 +720,67 @@ export default function SetupPage() {
             Model <code>{model}</code> · {mode === 'local' ? 'LAN mode' : 'Tunnel mode'} ·{' '}
             {mode === 'local' ? lanIp || '(no IP yet)' : tunnelUrl || '(no tunnel yet)'}
           </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: '0.9rem',
+            padding: '0.85rem 0.95rem',
+            borderRadius: 5,
+            border: '1px solid rgba(255,255,255,0.10)',
+            background: 'rgba(255,255,255,0.025)',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10.5,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.45)',
+              fontFamily: 'var(--font-geist-mono), monospace',
+              marginBottom: 8,
+            }}
+          >
+            What happens when you prompt Chorus
+          </div>
+          <ul
+            style={{
+              listStyle: 'none',
+              margin: 0,
+              padding: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              fontSize: 12.5,
+              color: 'rgba(255,255,255,0.80)',
+              lineHeight: 1.55,
+            }}
+          >
+            <li>
+              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
+              Orchestrator fans the prompt across every online peer, each with a distinct persona.
+            </li>
+            <li>
+              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
+              Round-by-round answers stream into the feed live — watch the swarm think in real time.
+            </li>
+            <li>
+              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
+              A consensus/dissent graph scores each peer; watchdogs prune refusals and duplicates.
+            </li>
+            <li>
+              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
+              A moderator agent merges the best answers into a <strong>single final response</strong> with citations.
+            </li>
+            <li>
+              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
+              Payout splits (floor + consensus bonus + dissent bonus) ship with an <strong>Ed25519-signed receipt</strong>.
+            </li>
+            <li>
+              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
+              Every job is saved — your history is on the sidebar, intact across restarts.
+            </li>
+          </ul>
         </div>
       </StepShell>
     ),

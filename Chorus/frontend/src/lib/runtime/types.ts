@@ -38,6 +38,19 @@ export interface JobRuntimeState {
   embeddingModelVersion: string | null
   /** Live discovery view from signaling server. */
   connectedPeers: PeerEntry[]
+  /** Moderator-merged final answer (set at job_done). */
+  finalAnswer: string | null
+  /** Slot IDs cited by the final answer. */
+  citations: string[]
+  /** Latest "edge" events for consensus/dissent visualization. */
+  edges: RuntimeEdge[]
+}
+
+export interface RuntimeEdge {
+  round: number
+  from: string
+  to: string
+  kind: 'nearest' | 'furthest'
 }
 
 export interface FeedPreviewItem {

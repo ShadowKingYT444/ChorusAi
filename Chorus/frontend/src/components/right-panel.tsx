@@ -235,14 +235,22 @@ function ClusterActivityBar({ clusterId, count, max }: { clusterId: ClusterID; c
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
+import type { SettlementPreview } from '@/lib/api/orchestrator'
+
 export function RightPanel({
   messages,
   totalSlots,
   live = false,
+  finalAnswer = null,
+  citations = [],
+  settlement = null,
 }: {
   messages?: AgentMessage[]
   totalSlots?: number
   live?: boolean
+  finalAnswer?: string | null
+  citations?: string[]
+  settlement?: SettlementPreview | null
 }) {
   const sourceMessages = messages ?? AGENT_MESSAGES
   const [visibleCount, setVisibleCount] = useState(0)
@@ -400,6 +408,44 @@ export function RightPanel({
         </div>
       </div>
 
+      {/* ── Final answer (after merge) ── */}
+      {finalAnswer && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            margin: '10px 14px 0',
+            padding: '10px 12px',
+            background: 'rgba(90, 220, 140, 0.06)',
+            border: '1px solid rgba(90, 220, 140, 0.25)',
+            borderRadius: 3,
+          }}
+        >
+          <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: '0.16em', color: 'rgba(120,240,170,0.75)', marginBottom: 6 }}>
+            FINAL · CHORUS MERGE
+          </div>
+          <div style={{ fontFamily: SANS, fontSize: 12, color: 'rgba(255,255,255,0.88)', lineHeight: 1.45 }}>
+            {finalAnswer}
+          </div>
+          {citations.length > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {citations.map((c) => (
+                <span
+                  key={c}
+                  style={{
+                    fontFamily: MONO, fontSize: 8, letterSpacing: '0.08em',
+                    padding: '2px 6px', borderRadius: 2,
+                    background: 'rgba(120,240,170,0.10)', color: 'rgba(180,255,210,0.85)',
+                  }}
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* ── Feed ── */}
       <div
         ref={feedRef}
@@ -460,6 +506,65 @@ export function RightPanel({
           ))}
         </div>
       </div>
+
+      {/* ── Settlement panel ── */}
+      {settlement && (
+        <div style={{
+          padding: '10px 14px',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          flexShrink: 0,
+          background: 'rgba(255,255,255,0.015)',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 8,
+          }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.40)' }}>
+              SETTLEMENT · {settlement.total_pool.toFixed(0)} POOL
+            </span>
+            {settlement.receipt?.signature && (
+              <span
+                title={`Ed25519 · ${settlement.receipt.pubkey?.slice(0, 16)}…`}
+                style={{ fontFamily: MONO, fontSize: 7, color: 'rgba(120,240,170,0.85)', letterSpacing: '0.08em' }}
+              >
+                ✓ {settlement.receipt.signature.slice(0, 14)}…
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {Object.entries(settlement.payouts).map(([slot, total]) => {
+              const br = settlement.payout_breakdown?.[slot]
+              const title = br
+                ? `floor ${br.floor} + consensus ${br.consensus_bonus} + dissent ${br.dissent_bonus} = ${br.total}`
+                : `${total}`
+              return (
+                <div
+                  key={slot}
+                  title={title}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.72)',
+                  }}
+                >
+                  <span style={{ minWidth: 64, color: 'rgba(255,255,255,0.45)' }}>{slot}</span>
+                  <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 1, overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${Math.min(100, (total / Math.max(1, settlement.total_pool)) * 100 * settlement.eligible_agents)}%`,
+                        background: 'rgba(255,255,255,0.55)',
+                      }}
+                    />
+                  </div>
+                  <span style={{ minWidth: 44, textAlign: 'right', color: 'rgba(255,255,255,0.85)' }}>
+                    {total.toFixed(2)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Cluster legend ── */}
       <div style={{

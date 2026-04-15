@@ -1,16 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import re
+import time
 from collections import Counter
 
 import anyio
+import httpx
 
+from orchestrator.broadcast_completions import normalize_completion_url
 from orchestrator.embeddings import EmbeddingService
-from orchestrator.invoker import AgentInvoker
+from orchestrator.invoker import AgentInvoker, OLLAMA_MODEL
+from orchestrator.metrics import METRICS
+from orchestrator.identity import get_orchestrator_keypair
 from orchestrator.models import JobRecord, JobStatus, PruneStatus, RoundAudit, SlotRoundAudit
-from orchestrator.payout import compute_settlement
+from orchestrator.payout import attach_receipt, compute_settlement
 from orchestrator.store import JobStore
 from orchestrator.watchdog import Watchdog
+
+MERGE_SYSTEM_PROMPT = (
+    "You are the Chorus moderator. Given peer answers from N agents, produce ONE final "
+    "answer of at most 120 words that synthesizes the strongest points. Cite the slots "
+    "you used with square-bracket tags like [slot-0]. Be direct, skip preamble."
+)
+_CITATION_RE = re.compile(r"\[(slot-[A-Za-z0-9_\-]+)\]")
 
 
 class RoundEngine:
@@ -38,6 +52,7 @@ class RoundEngine:
         job.status = JobStatus.running
         await self.store.update_job(job)
 
+        METRICS.inc("jobs_started_total")
         try:
             for round_index in range(1, job.spec.rounds + 1):
                 job.current_round = round_index
@@ -46,19 +61,47 @@ class RoundEngine:
                     "round_started",
                     {"round": round_index},
                 )
+                round_t0 = time.perf_counter()
                 round_audit = await self._run_round(job, round_index)
+                round_latency_ms = (time.perf_counter() - round_t0) * 1000
+                METRICS.observe("round_latency_ms", round_latency_ms)
+                METRICS.inc("rounds_completed_total")
+                for slot_audit in round_audit.slots.values():
+                    METRICS.inc("rounds_slots_total")
+                    if slot_audit.prune_status == PruneStatus.pruned:
+                        METRICS.inc("rounds_slots_pruned")
                 job.rounds_data.append(round_audit)
                 await self.store.update_job(job)
 
+            await self._merge_answer(job)
+
+            METRICS.inc("jobs_completed_total")
             job.status = JobStatus.completed
             job.settlement_preview = compute_settlement(job)
+            try:
+                attach_receipt(
+                    job.settlement_preview,
+                    job.job_id,
+                    get_orchestrator_keypair(),
+                )
+            except Exception:  # noqa: BLE001
+                # Receipt attachment is best-effort; never block settlement.
+                pass
             await self.store.update_job(job)
             await self.store.emit(
                 job_id,
                 "job_done",
-                {"round": job.spec.rounds, "payload": {"settlement_preview": job.settlement_preview}},
+                {
+                    "round": job.spec.rounds,
+                    "payload": {
+                        "settlement_preview": job.settlement_preview,
+                        "final_answer": job.final_answer,
+                        "citations": job.citations,
+                    },
+                },
             )
         except Exception as exc:  # noqa: BLE001
+            METRICS.inc("jobs_failed_total")
             job.status = JobStatus.failed
             job.error = str(exc)
             await self.store.update_job(job)
@@ -191,6 +234,90 @@ class RoundEngine:
             slots=slots_audit,
             nearest_edges=nearest_edges,
             furthest_edges=furthest_edges,
+        )
+
+    async def _merge_answer(self, job: JobRecord) -> None:
+        """Call a moderator completion to synthesize one final answer from last round.
+
+        Best-effort: on any failure falls back to highest-c_impact slot completion.
+        Emits `final_answer` event; never blocks settlement.
+        """
+        if not job.rounds_data:
+            return
+
+        last_round = job.rounds_data[-1]
+        valid_slots: list[SlotRoundAudit] = [
+            a for a in last_round.slots.values()
+            if a.completion and a.prune_status != PruneStatus.pruned
+        ]
+        if not valid_slots:
+            return
+
+        answers_block = "\n\n".join(
+            f"[{a.slot_id}] {(a.completion or '').strip()}" for a in valid_slots
+        )
+        merge_url_env = os.getenv("ORC_MERGE_URL", "").strip()
+        target_url: str | None = None
+        if merge_url_env:
+            target_url = normalize_completion_url(merge_url_env)
+        else:
+            for slot_id, slot in job.slots.items():
+                if slot.status != PruneStatus.pruned:
+                    target_url = normalize_completion_url(str(slot.registration.completion_base_url))
+                    break
+
+        final_text: str | None = None
+        if target_url is not None:
+            payload = {
+                "model": os.getenv("ORC_MERGE_MODEL", OLLAMA_MODEL),
+                "messages": [
+                    {"role": "system", "content": MERGE_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"### Prompt\n{job.spec.prompt}\n\n"
+                            f"### Peer answers\n{answers_block}\n\n"
+                            "### Produce the final answer now."
+                        ),
+                    },
+                ],
+                "max_tokens": int(os.getenv("ORC_MERGE_MAX_TOKENS", "256")),
+                "temperature": float(os.getenv("ORC_MERGE_TEMPERATURE", "0.3")),
+                "user": f"merge:{job.job_id}",
+            }
+            headers = {"Content-Type": "application/json", "X-Chorus-Job-Id": job.job_id, "X-Chorus-Merge": "1"}
+            timeout_s = float(os.getenv("ORC_MERGE_TIMEOUT_S", "30"))
+            try:
+                start = time.perf_counter()
+                async with httpx.AsyncClient(timeout=timeout_s) as client:
+                    resp = await client.post(target_url, headers=headers, json=payload)
+                if resp.status_code // 100 == 2:
+                    data = resp.json()
+                    final_text = (
+                        data.get("choices", [{}])[0]
+                        .get("message", {})
+                        .get("content")
+                    )
+                _ = int((time.perf_counter() - start) * 1000)
+            except Exception:  # noqa: BLE001
+                final_text = None
+
+        if not final_text:
+            best = max(valid_slots, key=lambda a: a.impact_c)
+            final_text = (best.completion or "").strip()
+
+        final_text = (final_text or "").strip()
+        cited = [slot_id for slot_id in _CITATION_RE.findall(final_text)]
+        if not cited:
+            cited = [a.slot_id for a in valid_slots[:3]]
+
+        job.final_answer = final_text
+        job.citations = cited
+        await self.store.update_job(job)
+        await self.store.emit(
+            job.job_id,
+            "final_answer",
+            {"round": job.spec.rounds, "payload": {"text": final_text, "citations": cited}},
         )
 
     def _build_persona(self, slot_id: str, round_index: int, job_salt: str) -> str:
