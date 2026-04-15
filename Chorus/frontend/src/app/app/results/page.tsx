@@ -5,10 +5,10 @@ import { motion, useInView } from 'framer-motion'
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip } from 'recharts'
 import { TopBar } from '@/components/top-bar'
 import { BeamsBackground } from '@/components/ui/beams-background'
-import { SIMULATION_RESULTS, CLUSTERS, AGENT_MESSAGES, AGENT_NODES, COST_CHART_DATA } from '@/lib/mock-data'
+import { type Cluster, type AgentMessage } from '@/lib/mock-data'
 import { useSharedJobRuntime } from '@/lib/runtime/job-runtime-provider'
 import { buildCostChartData } from '@/lib/runtime/adapter'
-import { isOrchestratorConfigured } from '@/lib/api/orchestrator'
+import Link from 'next/link'
 
 const SANS = 'var(--font-geist-sans)'
 const MONO = 'var(--font-geist-mono)'
@@ -134,8 +134,8 @@ function ClusterCard({
 }: {
   idx: number
   delay: number
-  clusters: typeof CLUSTERS
-  messages: typeof AGENT_MESSAGES
+  clusters: Cluster[]
+  messages: AgentMessage[]
 }) {
   const cluster = clusters[idx]
   if (!cluster) return null
@@ -257,7 +257,7 @@ const TYPE_COLORS = {
   cluster: 'rgba(100,160,255,0.75)',
 } as const
 
-function RoundTimeline({ messages }: { messages: typeof AGENT_MESSAGES }) {
+function RoundTimeline({ messages }: { messages: AgentMessage[] }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: '-40px' })
 
@@ -365,13 +365,15 @@ function RoundTimeline({ messages }: { messages: typeof AGENT_MESSAGES }) {
 // ─── Top Contributing Agents ──────────────────────────────────────────────────
 
 const CLUSTER_OPACITY: Record<number, number> = { 1: 0.85, 2: 0.65, 3: 0.45, 4: 0.30 }
-const CLUSTER_STANCE: Record<number, string> = { 1: 'C1 · Bullish', 2: 'C2 · Bearish', 3: 'C3 · Neutral', 4: 'C4 · Volatile' }
 
-function TopAgents({ nodes }: { nodes: typeof AGENT_NODES }) {
+interface TopAgent { id: string; messageCount: number; clusterId: number }
+
+function TopAgents({ agents }: { agents: TopAgent[] }) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: '-40px' })
-  const top = [...nodes].sort((a, b) => b.messageCount - a.messageCount).slice(0, 6)
+  const top = [...agents].sort((a, b) => b.messageCount - a.messageCount).slice(0, 6)
   const maxMessages = top[0]?.messageCount ?? 1
+  if (top.length === 0) return null
 
   return (
     <div ref={ref} style={{ marginBottom: '5rem' }}>
@@ -384,8 +386,9 @@ function TopAgents({ nodes }: { nodes: typeof AGENT_NODES }) {
       </span>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem 2.5rem' }}>
         {top.map((node, i) => {
-          const op = CLUSTER_OPACITY[node.clusterId]
-          const barW = (node.messageCount / maxMessages) * 100
+          const op = CLUSTER_OPACITY[node.clusterId] ?? 0.5
+          const barW = (node.messageCount / Math.max(1, maxMessages)) * 100
+          const shortId = node.id.length > 10 ? node.id.slice(0, 10) + '…' : node.id
           return (
             <motion.div
               key={node.id}
@@ -394,8 +397,8 @@ function TopAgents({ nodes }: { nodes: typeof AGENT_NODES }) {
               transition={{ type: 'spring', stiffness: 220, damping: 28, delay: 0.1 + i * 0.07 }}
               style={{ display: 'flex', alignItems: 'center', gap: 10 }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 10, color: `rgba(255,255,255,${op})`, width: 28, flexShrink: 0 }}>
-                {node.id}
+              <span style={{ fontFamily: MONO, fontSize: 10, color: `rgba(255,255,255,${op})`, width: 96, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {shortId}
               </span>
               <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
                 <motion.div
@@ -405,11 +408,8 @@ function TopAgents({ nodes }: { nodes: typeof AGENT_NODES }) {
                   style={{ height: '100%', background: `rgba(255,255,255,${op})`, borderRadius: 2 }}
                 />
               </div>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.28)', width: 18, textAlign: 'right', flexShrink: 0 }}>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.28)', width: 24, textAlign: 'right', flexShrink: 0 }}>
                 {node.messageCount}
-              </span>
-              <span style={{ fontFamily: MONO, fontSize: 8, color: `rgba(255,255,255,${op * 0.5})`, width: 68, flexShrink: 0, letterSpacing: '0.05em' }}>
-                {CLUSTER_STANCE[node.clusterId]}
               </span>
             </motion.div>
           )
@@ -424,13 +424,87 @@ function TopAgents({ nodes }: { nodes: typeof AGENT_NODES }) {
 function ResultsPageContent() {
   const router = useRouter()
   const runtime = useSharedJobRuntime()
-  const useBackend = isOrchestratorConfigured() && runtime.session?.mode === 'backend'
-  const r = useBackend ? runtime.results : SIMULATION_RESULTS
-  const clusters = useBackend ? runtime.clusters : CLUSTERS
-  const messages = useBackend ? runtime.messages : AGENT_MESSAGES
-  const costChartData = useBackend ? buildCostChartData(r) : COST_CHART_DATA
+  const hasSession = Boolean(runtime.session)
+  const hasMessages = runtime.messages.length > 0
+  const r = runtime.results
+  const clusters = runtime.clusters
+  const messages = runtime.messages
+  const costChartData = buildCostChartData(r)
   const costRef = useRef<HTMLDivElement>(null)
   const costInView = useInView(costRef, { once: true })
+
+  const topAgents = (() => {
+    const by = new Map<string, { id: string; messageCount: number; clusterId: number }>()
+    for (const m of messages) {
+      const id = m.slotId.split('#')[0]
+      const existing = by.get(id)
+      if (existing) existing.messageCount++
+      else by.set(id, { id, messageCount: 1, clusterId: m.clusterId })
+    }
+    return Array.from(by.values())
+  })()
+
+  if (!hasSession || !hasMessages) {
+    return (
+      <div className="flex flex-col h-[100dvh] w-full bg-neutral-950 overflow-hidden relative">
+        <BeamsBackground intensity="subtle" />
+        <div className="relative z-10 shrink-0">
+          <TopBar />
+        </div>
+        <div className="flex-1 grid place-items-center relative z-10">
+          <div className="text-center max-w-md px-6">
+            <span
+              style={{
+                fontFamily: MONO,
+                fontSize: 9,
+                letterSpacing: '0.18em',
+                color: 'rgba(255,255,255,0.35)',
+                textTransform: 'uppercase',
+                display: 'block',
+                marginBottom: '1.2rem',
+              }}
+            >
+              No results yet
+            </span>
+            <h1
+              style={{
+                fontFamily: SANS,
+                fontSize: 'clamp(1.3rem, 2.4vw, 1.8rem)',
+                fontWeight: 600,
+                color: 'rgba(255,255,255,0.88)',
+                marginBottom: '1rem',
+                lineHeight: 1.2,
+              }}
+            >
+              {hasSession
+                ? 'This simulation has no agent responses yet.'
+                : 'Run a chat first and results will appear here.'}
+            </h1>
+            <p style={{ fontFamily: SANS, fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: '1.6rem', lineHeight: 1.5 }}>
+              Send a prompt to the chorus from the home page. Each peer response is aggregated
+              into clusters, consensus, and a cost comparison.
+            </p>
+            <Link
+              href="/"
+              style={{
+                display: 'inline-block',
+                padding: '10px 22px',
+                borderRadius: 2,
+                background: 'rgba(255,255,255,0.92)',
+                color: '#000',
+                fontFamily: SANS,
+                fontSize: 12,
+                fontWeight: 500,
+                textDecoration: 'none',
+              }}
+            >
+              Go to chat
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-neutral-950 overflow-hidden relative">
@@ -500,22 +574,6 @@ function ResultsPageContent() {
               Cluster Breakdown
             </span>
 
-            {/* Tension indicator */}
-            <div style={{
-              marginBottom: '1.5rem',
-              display: 'inline-flex', alignItems: 'center', gap: 10,
-              padding: '8px 14px',
-              borderRadius: 2, border: '1px solid rgba(255,255,255,0.07)',
-              background: 'rgba(255,255,255,0.02)',
-            }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.65)' }} />
-              <span style={{ fontFamily: SANS, fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
-                Cluster 2 disagrees with Cluster 1
-              </span>
-              <div style={{ width: 28, height: 1, background: 'rgba(255,255,255,0.12)' }} />
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.88)' }} />
-            </div>
-
             {/* Asymmetric grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem' }}>
               <ClusterCard idx={0} delay={0.35} clusters={clusters} messages={messages} />
@@ -531,7 +589,7 @@ function ResultsPageContent() {
           <RoundTimeline messages={messages} />
 
           {/* ── Section 2c: Top Agents ── */}
-          <TopAgents nodes={AGENT_NODES} />
+          <TopAgents agents={topAgents} />
 
           {/* ── Section 3: Cost ── */}
           <div

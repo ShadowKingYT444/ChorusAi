@@ -10,31 +10,28 @@ import {
 export interface NetworkStatus {
   online: number
   peers: PeerEntry[]
-  mode: 'live' | 'mock' | 'offline'
+  /**
+   * `live`     - orchestrator reachable, peers returned (may be 0)
+   * `offline`  - orchestrator configured but unreachable
+   * `unconfigured` - no orchestrator URL set yet (user needs /setup or /join)
+   */
+  mode: 'live' | 'offline' | 'unconfigured'
   lastUpdated: number | null
   refresh: () => void
 }
 
-const MOCK_PEERS: PeerEntry[] = Array.from({ length: 8 }).map((_, i) => ({
-  peer_id: `mock-peer-${String(i + 1).padStart(3, '0')}`,
-  address: `10.0.0.${10 + i}`,
-  model: i % 2 === 0 ? 'qwen2.5:0.5b' : 'llama3.2:1b',
-  joined_at: Date.now() / 1000 - i * 90,
-  status: 'idle',
-}))
-
 export function useNetworkStatus(pollMs = 4000): NetworkStatus {
   const [peers, setPeers] = useState<PeerEntry[]>([])
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
-  const [mode, setMode] = useState<'live' | 'mock' | 'offline'>(
-    isOrchestratorConfigured() ? 'offline' : 'mock',
+  const [mode, setMode] = useState<'live' | 'offline' | 'unconfigured'>(
+    isOrchestratorConfigured() ? 'offline' : 'unconfigured',
   )
   const mounted = useRef(false)
 
   const refresh = useCallback(async () => {
     if (!isOrchestratorConfigured()) {
-      setPeers(MOCK_PEERS)
-      setMode('mock')
+      setPeers([])
+      setMode('unconfigured')
       setLastUpdated(Date.now())
       return
     }

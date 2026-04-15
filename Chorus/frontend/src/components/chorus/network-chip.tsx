@@ -7,17 +7,21 @@ import type { NetworkStatus } from '@/hooks/use-network-status'
 export function NetworkChip({ status }: { status: NetworkStatus }) {
   const online = status.online
   const isLive = status.mode === 'live'
-  const isMock = status.mode === 'mock'
+  const isUnconfigured = status.mode === 'unconfigured'
   const dotColor = isLive
-    ? 'rgba(120,220,160,0.95)'
-    : isMock
+    ? online > 0
+      ? 'rgba(120,220,160,0.95)'
+      : 'rgba(220,200,120,0.9)'
+    : isUnconfigured
     ? 'rgba(180,200,255,0.85)'
     : 'rgba(220,120,120,0.85)'
   const label = isLive
-    ? `${online} agent${online === 1 ? '' : 's'} online`
-    : isMock
-    ? `${online} mock agents`
-    : 'Network offline'
+    ? online > 0
+      ? `${online} peer${online === 1 ? '' : 's'} online`
+      : 'no peers online'
+    : isUnconfigured
+    ? 'no orchestrator'
+    : 'orchestrator offline'
 
   return (
     <div
@@ -28,7 +32,7 @@ export function NetworkChip({ status }: { status: NetworkStatus }) {
         backdropFilter: 'blur(8px)',
       }}
     >
-      {status.mode === 'offline' ? (
+      {status.mode === 'offline' || status.mode === 'unconfigured' ? (
         <WifiOff className="w-3 h-3 text-white/55" />
       ) : (
         <motion.span

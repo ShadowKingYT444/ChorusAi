@@ -21,7 +21,20 @@ import {
 import { configuredAgentOriginsFromEnv } from '@/lib/runtime/agent-origins'
 import { readSimulationSession } from '@/lib/runtime/session'
 import type { JobRuntimeState, RuntimeMessage, SimulationSession } from '@/lib/runtime/types'
-import { CLUSTERS, SIMULATION_RESULTS } from '@/lib/mock-data'
+import type { Cluster, SimulationResults } from '@/lib/mock-data'
+
+const EMPTY_CLUSTERS: Cluster[] = []
+const EMPTY_RESULTS: SimulationResults = {
+  finalPrediction: '',
+  confidenceScore: 0,
+  costActual: 0,
+  costCloud: 0,
+  agentCount: 0,
+  rounds: 0,
+  totalMessages: 0,
+  wallTimeSeconds: 0,
+  nodesContributing: 0,
+}
 
 function maxMessageId(prev: RuntimeMessage[]): number {
   if (prev.length === 0) return 0
@@ -81,10 +94,10 @@ function defaultState(session: SimulationSession | null): JobRuntimeState {
     session,
     status: 'pending',
     currentRound: 1,
-    totalRounds: session?.rounds ?? SIMULATION_RESULTS.rounds,
+    totalRounds: session?.rounds ?? 0,
     messages: [],
-    clusters: CLUSTERS,
-    results: session ? buildResults(session, [], null) : SIMULATION_RESULTS,
+    clusters: EMPTY_CLUSTERS,
+    results: session ? buildResults(session, [], null) : EMPTY_RESULTS,
     settlement: null,
     operator: null,
     loading: true,

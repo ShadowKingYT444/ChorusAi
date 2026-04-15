@@ -6,7 +6,6 @@ import { useSimulation } from '@/hooks/use-simulation'
 import { Suspense, useState, useEffect, useRef } from 'react'
 import { Activity, Clock, Database, Zap, Server } from 'lucide-react'
 import { useSharedJobRuntime } from '@/lib/runtime/job-runtime-provider'
-import { isOrchestratorConfigured } from '@/lib/api/orchestrator'
 
 // ─── Animated waveform sparkline ──────────────────────────────────────────────
 
@@ -175,8 +174,8 @@ function FeedPageContent() {
     }
   }, [])
 
-  const useBackend = isOrchestratorConfigured() && runtime.session?.mode === 'backend'
   const connectedPeers = runtime.connectedPeers
+  const hasSession = Boolean(runtime.session ?? job)
 
   return (
     <div className="flex flex-col h-[100dvh] bg-black overflow-hidden font-sans text-foreground">
@@ -217,8 +216,10 @@ function FeedPageContent() {
                   Deployed Agents
                 </div>
                 <div className="font-mono text-2xl text-white/85">
-                  {(runtime.session ?? job)
+                  {hasSession
                     ? (runtime.session ?? job)!.agentCount.toLocaleString()
+                    : connectedPeers.length > 0
+                    ? connectedPeers.length.toLocaleString()
                     : <span className="text-white/20 text-sm tracking-widest">STANDBY</span>}
                 </div>
               </div>
@@ -228,7 +229,7 @@ function FeedPageContent() {
                   Consensus Rounds
                 </div>
                 <div className="font-mono text-2xl text-white/85">
-                  {(runtime.session ?? job)
+                  {hasSession
                     ? (runtime.session ?? job)!.rounds
                     : <span className="text-white/20 text-sm tracking-widest">STANDBY</span>}
                 </div>
@@ -245,7 +246,7 @@ function FeedPageContent() {
                 <div className="font-mono text-[11px]">
                   <span className="text-white/40">State: </span>
                   <span style={{ color: 'var(--color-secure)' }}>
-                    {useBackend ? runtime.status.toUpperCase() : 'ACTIVE'}
+                    {hasSession ? runtime.status.toUpperCase() : 'IDLE'}
                   </span>
                 </div>
               </div>
@@ -277,7 +278,7 @@ function FeedPageContent() {
                     </ul>
                   ) : (
                     <span className="text-white/35">
-                      {useBackend ? 'Waiting for peers…' : 'Signaling off (mock mode).'}
+                      Waiting for peers…
                     </span>
                   )}
                 </div>
@@ -297,9 +298,9 @@ function FeedPageContent() {
         {/* RIGHT PANE: Feed / Right Panel */}
         <div className="flex-1 overflow-hidden h-full bg-[#030303]">
            <RightPanel
-             messages={useBackend ? runtime.messages : undefined}
-             totalSlots={runtime.session?.agentCount ?? job?.agentCount}
-             live={useBackend}
+             messages={runtime.messages.length > 0 ? runtime.messages : undefined}
+             totalSlots={runtime.session?.agentCount ?? job?.agentCount ?? connectedPeers.length}
+             live={Boolean(runtime.session)}
            />
         </div>
       </div>

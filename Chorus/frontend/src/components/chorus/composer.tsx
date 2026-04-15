@@ -123,10 +123,12 @@ export function ChorusComposer({
 
       <div className="mt-2 text-center font-mono text-[10px] text-white/35 tracking-[0.08em]">
         {status.mode === 'live'
-          ? `Network live · ${status.online} peer${status.online === 1 ? '' : 's'} answering in parallel`
-          : status.mode === 'mock'
-          ? 'Demo mode · connect orchestrator to reach live peers'
-          : 'Orchestrator offline · check NEXT_PUBLIC_ORCHESTRATOR_BASE_URL'}
+          ? status.online > 0
+            ? `Network live · ${status.online} peer${status.online === 1 ? '' : 's'} answering in parallel`
+            : 'Network live · waiting for peers to join'
+          : status.mode === 'unconfigured'
+          ? 'No orchestrator set · open /setup or /join to connect'
+          : 'Orchestrator unreachable · check NEXT_PUBLIC_ORCHESTRATOR_BASE_URL'}
       </div>
     </motion.div>
   )
