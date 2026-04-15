@@ -23,7 +23,6 @@ import { ConnectionTest } from '@/components/chorus/setup-wizard/connection-test
 import { OsTabs, detectOs, type OsKey } from '@/components/chorus/setup-wizard/os-tabs'
 import { StepShell } from '@/components/chorus/setup-wizard/step-shell'
 import {
-  getEffectiveOrchestratorBase,
   getOrchestratorBaseOverride,
   getSavedOllamaIp,
   saveOllamaIp,
@@ -64,6 +63,13 @@ function writeLocalStorage(key: string, value: string): void {
   if (typeof window === 'undefined') return
   if (value.trim()) localStorage.setItem(key, value.trim())
   else localStorage.removeItem(key)
+}
+
+function deriveModelPublicUrl(mode: PathMode, lanIp: string, tunnelUrl: string): string {
+  if (mode === 'tunnel') return tunnelUrl.trim()
+  const raw = lanIp.trim()
+  if (!raw) return ''
+  return /^https?:\/\//i.test(raw) ? raw : `http://${raw}:11434`
 }
 
 export default function SetupPage() {
@@ -154,8 +160,9 @@ export default function SetupPage() {
 
   const onConnectOrchestrator = useCallback(() => {
     const v = orchestratorBase.trim()
-    if (v) setOrchestratorBaseOverride(v)
-  }, [orchestratorBase])
+    setOrchestratorBaseOverride(v || null)
+    writeLocalStorage(MODEL_PUBLIC_URL_KEY, deriveModelPublicUrl(mode, lanIp, tunnelUrl))
+  }, [lanIp, mode, orchestratorBase, tunnelUrl])
 
   const installCommands: Record<OsKey, { code: string; note?: string }> = {
     macos: {
@@ -631,15 +638,15 @@ export default function SetupPage() {
           }}
         />
         <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
-          Session override (sessionStorage). Equivalent to{' '}
+          Saved in this browser and reused across tabs. Equivalent to{' '}
           <code style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
             NEXT_PUBLIC_ORCHESTRATOR_BASE_URL
           </code>
           .{' '}
-          {getEffectiveOrchestratorBase() && (
+          {orchestratorBase.trim() && (
             <>
               Currently using{' '}
-              <span style={{ color: 'rgba(255,255,255,0.82)' }}>{getEffectiveOrchestratorBase()}</span>.
+              <span style={{ color: 'rgba(255,255,255,0.82)' }}>{orchestratorBase.trim()}</span>.
             </>
           )}
         </p>
@@ -719,6 +726,9 @@ export default function SetupPage() {
           <div>
             Model <code>{model}</code> · {mode === 'local' ? 'LAN mode' : 'Tunnel mode'} ·{' '}
             {mode === 'local' ? lanIp || '(no IP yet)' : tunnelUrl || '(no tunnel yet)'}
+          </div>
+          <div style={{ marginTop: 4 }}>
+            Peer endpoint <code>{deriveModelPublicUrl(mode, lanIp, tunnelUrl) || '(not set yet)'}</code>
           </div>
         </div>
 

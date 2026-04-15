@@ -197,8 +197,9 @@ export type SignalingServerEvent =
 
 const DEFAULT_TIMEOUT_MS = 30_000
 
-/** Session override so LAN guests can use `http://<host-ip>:8000` without rebuilding. */
+/** Browser-persisted override so LAN guests can use `http://<host-ip>:8000` without rebuilding. */
 export const ORCHESTRATOR_BASE_SESSION_KEY = 'chorus_orchestrator_override'
+export const ORCHESTRATOR_BASE_LOCAL_KEY = 'chorus_orchestrator_base'
 
 function normalizeOrchestratorBase(url: string): string {
   return url.trim().replace(/\/+$/, '')
@@ -206,17 +207,25 @@ function normalizeOrchestratorBase(url: string): string {
 
 export function getOrchestratorBaseOverride(): string | null {
   if (typeof window === 'undefined') return null
-  const raw = sessionStorage.getItem(ORCHESTRATOR_BASE_SESSION_KEY)?.trim()
+  const raw =
+    sessionStorage.getItem(ORCHESTRATOR_BASE_SESSION_KEY)?.trim() ??
+    localStorage.getItem(ORCHESTRATOR_BASE_LOCAL_KEY)?.trim()
   return raw ? normalizeOrchestratorBase(raw) : null
 }
 
 export function setOrchestratorBaseOverride(url: string | null): void {
   if (typeof window === 'undefined') return
-  if (!url?.trim()) sessionStorage.removeItem(ORCHESTRATOR_BASE_SESSION_KEY)
-  else sessionStorage.setItem(ORCHESTRATOR_BASE_SESSION_KEY, normalizeOrchestratorBase(url))
+  if (!url?.trim()) {
+    sessionStorage.removeItem(ORCHESTRATOR_BASE_SESSION_KEY)
+    localStorage.removeItem(ORCHESTRATOR_BASE_LOCAL_KEY)
+    return
+  }
+  const normalized = normalizeOrchestratorBase(url)
+  sessionStorage.setItem(ORCHESTRATOR_BASE_SESSION_KEY, normalized)
+  localStorage.setItem(ORCHESTRATOR_BASE_LOCAL_KEY, normalized)
 }
 
-/** Env first at build time; on the client, session override wins when set. */
+/** Env first at build time; on the client, browser overrides win when set. */
 export function getEffectiveOrchestratorBase(): string | null {
   if (typeof window !== 'undefined') {
     const o = getOrchestratorBaseOverride()

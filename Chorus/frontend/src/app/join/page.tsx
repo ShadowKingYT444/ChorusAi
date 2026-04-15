@@ -256,6 +256,8 @@ export default function JoinLanPage() {
     setHasCheckedSetup(true)
   }, [])
 
+  const effectiveBase = baseInput.trim() || process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() || null
+
   const persistModelUrl = useCallback((url: string) => {
     const t = url.trim()
     if (typeof window !== 'undefined') {
@@ -301,11 +303,21 @@ export default function JoinLanPage() {
   const pushAddress = useCallback(() => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
-    persistModelUrl(modelPublicUrl)
+    const base = modelPublicUrl.trim()
+    if (!base) {
+      setError('Public model API base is required so other peers can reach your model.')
+      return
+    }
+    if (!normalizeOpenAIChatCompletionsUrl(base)) {
+      setError('Public model API base is invalid. Use a full http(s):// URL.')
+      return
+    }
+    setError(null)
+    persistModelUrl(base)
     ws.send(
       JSON.stringify({
         type: 'set_address',
-        address: modelPublicUrl.trim() || null,
+        address: base,
       }),
     )
   }, [modelPublicUrl, persistModelUrl])
@@ -324,12 +336,22 @@ export default function JoinLanPage() {
       return
     }
 
-    persistModelUrl(modelPublicUrl)
+    const publicModelBase = modelPublicUrl.trim()
+    if (!publicModelBase) {
+      setError('Set your public model API base first. Use your LAN IP or tunnel URL from /setup.')
+      return
+    }
+    if (!normalizeOpenAIChatCompletionsUrl(publicModelBase)) {
+      setError('Public model API base is invalid. Use a full http(s):// URL.')
+      return
+    }
+
+    persistModelUrl(publicModelBase)
     setPhase('connecting')
     const peerId = getOrCreateJoinTabPeerId()
     setMyPeerId(peerId)
 
-    const addr = modelPublicUrl.trim() || undefined
+    const addr = publicModelBase
     const ws = openSignalingSocket(peerId, modelLabel.trim() || 'lan-browser', {
       onEvent: (event) => {
         if (event.type === 'error') {
@@ -470,8 +492,6 @@ export default function JoinLanPage() {
     }
   }, [phase])
 
-  const effective = getEffectiveOrchestratorBase()
-
   return (
     <div
       style={{
@@ -567,7 +587,7 @@ export default function JoinLanPage() {
               lineHeight: 1.55,
             }}
           >
-            Need help setting up Ollama?{' '}
+            Your peer cannot answer jobs until this field is set. Need help setting up Ollama?{' '}
             <Link
               href="/setup"
               style={{
@@ -642,7 +662,7 @@ export default function JoinLanPage() {
           </p>
 
           <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>
-            Public model API base (optional but needed for host HTTP fan-out)
+            Public model API base
           </label>
           <input
             value={modelPublicUrl}
@@ -661,7 +681,8 @@ export default function JoinLanPage() {
             }}
           />
           <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.38)', marginBottom: '1rem' }}>
-            Saved in this browser (localStorage). After connecting you can edit and click &quot;Push URL to server&quot;.
+            Required. Use a LAN URL like <code>http://192.168.x.x:11434</code> or an https tunnel URL.
+            Saved in this browser and shared across tabs.
           </p>
 
           {(showAdvanced || !process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim()) && (
@@ -686,14 +707,14 @@ export default function JoinLanPage() {
                 }}
               />
               <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.38)', marginBottom: '1rem' }}>
-                Session override (sessionStorage).
+                Saved in this browser and shared across tabs.
               </p>
             </>
           )}
 
           {!showAdvanced && process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() && (
             <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '1rem' }}>
-              Using <span style={{ color: 'rgba(255,255,255,0.88)' }}>{effective}</span>
+              Using <span style={{ color: 'rgba(255,255,255,0.88)' }}>{effectiveBase}</span>
               <button
                 type="button"
                 onClick={() => setShowAdvanced(true)}

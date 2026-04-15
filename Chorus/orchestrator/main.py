@@ -81,6 +81,7 @@ def _cors_middleware_kwargs() -> dict:
             origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     lan = os.getenv("ORC_LAN_MODE", "1").strip().lower() in ("1", "true", "yes")
+    local_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$"
     # Match browser Origin for Next.js (or any port) on typical private LAN ranges.
     lan_origin_regex = (
         r"^https?://("
@@ -90,11 +91,12 @@ def _cors_middleware_kwargs() -> dict:
         r")(:[0-9]+)?$"
     )
     extra = os.getenv("ORC_CORS_ORIGIN_REGEX", "").strip()
-    regex = None
+    regex_parts = [local_origin_regex]
     if lan:
-        regex = lan_origin_regex if not extra else f"(?:{lan_origin_regex})|(?:{extra})"
-    elif extra:
-        regex = extra
+        regex_parts.append(lan_origin_regex)
+    if extra:
+        regex_parts.append(extra)
+    regex = "|".join(f"(?:{part})" for part in regex_parts if part)
 
     kw: dict = {
         "allow_origins": origins,
