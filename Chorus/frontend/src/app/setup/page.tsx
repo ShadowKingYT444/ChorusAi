@@ -200,9 +200,19 @@ export default function SetupPage() {
       })
       if (!res.ok) {
         setProbePhase('error')
-        setProbeMessage(
-          `Health check failed: HTTP ${res.status}. The URL is reachable but the server isn't a Chorus orchestrator (or it's still starting).`,
-        )
+        if (res.status === 404) {
+          setProbeMessage(
+            `Health check returned 404. The URL is reachable but ${base}/health doesn't exist on it. Most common cause: you pasted the Vercel frontend URL by mistake. The orchestrator URL is the Railway one (e.g. https://your-app.up.railway.app), NOT the Vercel one. Open ${base}/health directly in a browser tab — if you don't see {"status":"ok"}, this isn't a Chorus orchestrator.`,
+          )
+        } else if (res.status === 503) {
+          setProbeMessage(
+            `Health check returned 503. The orchestrator is up but reports unavailable. Check the Railway deploy logs.`,
+          )
+        } else {
+          setProbeMessage(
+            `Health check failed: HTTP ${res.status}. The URL is reachable but the server isn't responding like a Chorus orchestrator.`,
+          )
+        }
         return false
       }
       setProbePhase('ok')
