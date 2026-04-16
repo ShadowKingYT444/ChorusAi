@@ -46,6 +46,44 @@ frontend-only. Host it somewhere reachable over HTTP(S) + WebSocket:
 - After hosting, set `NEXT_PUBLIC_ORCHESTRATOR_BASE_URL` in Vercel to its URL,
   **or** leave it unset and let each user paste a URL at `/join`.
 
+### Hosting the backend (Railway)
+
+The repo ships with a [`Dockerfile`](Dockerfile) and
+[`railway.toml`](railway.toml) tuned for Railway. End-to-end:
+
+1. **New project → Deploy from GitHub repo**, point at this repo.
+2. Railway detects the Dockerfile and builds. First deploy takes ~3 min.
+3. **Generate a domain** under Settings → Networking → Public Networking.
+   Note the URL (e.g. `https://chorus-prod.up.railway.app`).
+4. **Add a Volume** under Storage with mount path `/data`. Without this, the
+   SQLite job history and the orchestrator's Ed25519 signing key reset on
+   every redeploy. Identity still works without a volume (an ephemeral key is
+   generated at boot), but signed receipts won't be portable across restarts.
+5. **Set environment variables** under Variables. The only one strictly required
+   for a hosted frontend to talk to the backend is `ORC_CORS_ORIGINS` — without
+   it every browser request from your Vercel deploy is blocked by CORS:
+
+   | Env var | Value | Required? |
+   |---|---|---|
+   | `ORC_CORS_ORIGINS` | `https://<your-vercel-domain>` (comma-separate multiple) | **Yes for hosted frontend** |
+   | `CHORUS_DB_PATH` | `/data/chorus.db` | Pre-set in Dockerfile |
+   | `ORC_KEY_PATH` | `/data/orchestrator_ed25519.key` | Pre-set in Dockerfile |
+   | `ORC_LAN_MODE` | `0` for public deploys (default `1`) | Optional |
+   | `ORC_OPERATOR_TOKEN` | Bearer token to gate operator endpoints | Optional |
+
+6. **Wire the frontend.** In Vercel → Project → Environment Variables:
+   ```
+   NEXT_PUBLIC_ORCHESTRATOR_BASE_URL=https://<your-railway-domain>
+   ```
+   Apply to Production + Preview, then redeploy (env bakes in at build time
+   for `NEXT_PUBLIC_*`).
+7. Visit your Vercel app's `/setup` page. The wizard pings `/health` on the
+   orchestrator before letting users finish — if the URL or CORS is wrong,
+   the error tells you exactly what to fix.
+
+Health check: `GET https://<your-railway-domain>/health` should return
+`{"status":"ok"}`. If it doesn't, check the deploy log.
+
 ## User onboarding
 
 New users should visit `/setup` in the deployed app — the wizard walks through

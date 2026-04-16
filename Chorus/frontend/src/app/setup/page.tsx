@@ -85,7 +85,10 @@ export default function SetupPage() {
   const [tunnelUrl, setTunnelUrl] = useState('')
   const [testOk, setTestOk] = useState(false)
   const [orchestratorBase, setOrchestratorBase] = useState('')
+  const [orchestratorBaseFromEnv, setOrchestratorBaseFromEnv] = useState(false)
   const [origin, setOrigin] = useState('https://chorus.vercel.app')
+  const [probePhase, setProbePhase] = useState<'idle' | 'probing' | 'ok' | 'error'>('idle')
+  const [probeMessage, setProbeMessage] = useState('')
 
   // Hydrate from environment on mount.
   useEffect(() => {
@@ -100,9 +103,12 @@ export default function SetupPage() {
     if (savedTunnel) setTunnelUrl(savedTunnel)
     const savedIp = getSavedOllamaIp()
     if (savedIp) setLanIp(savedIp)
-    const existingOrchestrator =
-      getOrchestratorBaseOverride() ?? process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() ?? ''
+    const override = getOrchestratorBaseOverride()
+    const envBase = process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() ?? ''
+    const existingOrchestrator = override ?? envBase
     setOrchestratorBase(existingOrchestrator)
+    // Track whether the value came from a baked-in env var (no override yet).
+    setOrchestratorBaseFromEnv(!override && envBase.length > 0)
   }, [])
 
   // Persist model name whenever it changes.
@@ -165,6 +171,68 @@ export default function SetupPage() {
     setOrchestratorBaseOverride(v || null)
     writeLocalStorage(MODEL_PUBLIC_URL_KEY, deriveModelPublicUrl(mode, lanIp, tunnelUrl))
   }, [lanIp, mode, orchestratorBase, tunnelUrl])
+
+  // Reset probe state when the URL changes.
+  useEffect(() => {
+    setProbePhase('idle')
+    setProbeMessage('')
+  }, [orchestratorBase])
+
+  const probeOrchestrator = useCallback(async (): Promise<boolean> => {
+    const v = orchestratorBase.trim()
+    if (!v) {
+      setProbePhase('error')
+      setProbeMessage(
+        'No orchestrator URL set. Paste a Chorus signaling URL above (or set NEXT_PUBLIC_ORCHESTRATOR_BASE_URL on Vercel).',
+      )
+      return false
+    }
+    setProbePhase('probing')
+    setProbeMessage('')
+    const base = v.replace(/\/+$/, '')
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    try {
+      const res = await fetch(`${base}/health`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) {
+        setProbePhase('error')
+        setProbeMessage(
+          `Health check failed: HTTP ${res.status}. The URL is reachable but the server isn't a Chorus orchestrator (or it's still starting).`,
+        )
+        return false
+      }
+      setProbePhase('ok')
+      setProbeMessage('Orchestrator reachable.')
+      return true
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setProbePhase('error')
+      if (/abort/i.test(msg)) {
+        setProbeMessage(`Health check timed out after 8s. Confirm ${base} is online and CORS allows ${origin}.`)
+      } else if (/cors|network|failed to fetch/i.test(msg)) {
+        setProbeMessage(
+          `Browser blocked the request. Most likely the orchestrator's CORS allowlist is missing this origin. On the orchestrator host (e.g. Railway), set ORC_CORS_ORIGINS=${origin} and redeploy.`,
+        )
+      } else {
+        setProbeMessage(`Could not reach ${base}/health: ${msg}`)
+      }
+      return false
+    } finally {
+      clearTimeout(timeout)
+    }
+  }, [orchestratorBase, origin])
+
+  const onFinishSetup = useCallback(async () => {
+    onConnectOrchestrator()
+    const ok = await probeOrchestrator()
+    if (ok && typeof window !== 'undefined') {
+      window.location.href = '/'
+    }
+  }, [onConnectOrchestrator, probeOrchestrator])
 
   const installCommands: Record<OsKey, { code: string; note?: string }> = {
     macos: {
@@ -703,49 +771,93 @@ export default function SetupPage() {
         icon={<Radio size={18} />}
         eyebrow={`Step ${totalSteps} of ${totalSteps}`}
         title="Connect to the Chorus network"
-        subtitle="Point this browser at a signaling / orchestrator server. Once saved, the main app can use your Ollama node directly."
+        subtitle={
+          orchestratorBaseFromEnv
+            ? "This deployment is already wired to a Chorus orchestrator. Click Finish setup to verify and continue."
+            : "Point this browser at a signaling / orchestrator server, then click Finish setup so we can verify it's reachable."
+        }
       >
-        <div
-          style={{
-            padding: '0.75rem 0.9rem',
-            borderRadius: 5,
-            border: '1px solid rgba(180,200,255,0.22)',
-            background: 'rgba(30,40,70,0.32)',
-            color: 'rgba(210,225,255,0.9)',
-            fontSize: 12.5,
-            lineHeight: 1.55,
-            marginBottom: '0.8rem',
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 6, color: 'rgba(230,238,255,0.98)' }}>
-            Don&apos;t have an orchestrator URL yet?
+        {orchestratorBaseFromEnv ? (
+          <div
+            style={{
+              padding: '0.75rem 0.9rem',
+              borderRadius: 5,
+              border: '1px solid rgba(143,212,168,0.3)',
+              background: 'rgba(30,60,40,0.3)',
+              color: 'rgba(210,240,220,0.92)',
+              fontSize: 12.5,
+              lineHeight: 1.55,
+              marginBottom: '0.8rem',
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4, color: 'rgba(220,245,225,0.98)' }}>
+              Public Chorus signaling server pre-configured
+            </div>
+            <div>
+              The orchestrator URL below was provided by this deployment. You don&apos;t need to host
+              anything — just click <strong>Finish setup</strong>. We&apos;ll do a health check first
+              and surface the exact problem if it fails.
+            </div>
           </div>
-          <div style={{ marginBottom: 8 }}>
-            Point this field at any online Chorus signaling server. If you&apos;re running your own,
-            clone{' '}
-            <a
-              href="https://github.com/ShadowKingYT444/ChorusAi"
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: 'rgba(180,210,255,0.95)' }}
-            >
-              the repo
-            </a>{' '}
-            and run these from <code>Chorus/</code> (needs Python 3.11+):
-          </div>
-          <CodeBlock
-            code={`# one-time install
+        ) : (
+          <div
+            style={{
+              padding: '0.75rem 0.9rem',
+              borderRadius: 5,
+              border: '1px solid rgba(180,200,255,0.22)',
+              background: 'rgba(30,40,70,0.32)',
+              color: 'rgba(210,225,255,0.9)',
+              fontSize: 12.5,
+              lineHeight: 1.55,
+              marginBottom: '0.8rem',
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 6, color: 'rgba(230,238,255,0.98)' }}>
+              Don&apos;t have an orchestrator URL yet?
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              Easiest path: deploy your own backend to Railway with one click —{' '}
+              <a
+                href="https://github.com/ShadowKingYT444/ChorusAi#hosting-the-backend-railway"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: 'rgba(180,210,255,0.95)' }}
+              >
+                follow the README
+              </a>
+              , then paste the resulting <code>https://*.up.railway.app</code> URL below.
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              Or run it locally from a clone of{' '}
+              <a
+                href="https://github.com/ShadowKingYT444/ChorusAi"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: 'rgba(180,210,255,0.95)' }}
+              >
+                the repo
+              </a>{' '}
+              (needs Python 3.11+ — these commands assume you&apos;ve already <code>git clone</code>d it):
+            </div>
+            <CodeBlock
+              code={`# from the directory that contains the cloned repo
+cd ChorusAi/Chorus
+
+# one-time install (installs the orchestrator package)
 python -m pip install -e .
 
 # start the signaling / orchestrator server
 python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
-            label="shell"
-          />
-          <div style={{ marginTop: 8, fontSize: 11.5, color: 'rgba(200,215,245,0.7)' }}>
-            Then use <code>http://&lt;your-lan-ip&gt;:8000</code> below. For a public deployment,
-            forward TCP 8000 on your router or front it with a tunnel.
+              label="shell"
+            />
+            <div style={{ marginTop: 8, fontSize: 11.5, color: 'rgba(200,215,245,0.7)' }}>
+              Common gotcha: the <code>cd ChorusAi/Chorus</code> step matters — running pip from
+              your home directory throws <code>does not appear to be a Python project</code>, and
+              skipping the install throws <code>No module named &apos;orchestrator&apos;</code>.
+              Then use <code>http://&lt;your-lan-ip&gt;:8000</code> below.
+            </div>
           </div>
-        </div>
+        )}
 
         <label
           style={{
@@ -798,25 +910,27 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
             marginTop: '0.3rem',
           }}
         >
-          <Link
-            href="/"
-            onClick={onConnectOrchestrator}
+          <button
+            type="button"
+            onClick={onFinishSetup}
+            disabled={probePhase === 'probing'}
             style={{
               padding: '0.6rem 1.15rem',
               borderRadius: 4,
-              background: 'rgba(255,255,255,0.92)',
+              border: 'none',
+              background: probePhase === 'probing' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.92)',
               color: '#050508',
               fontWeight: 600,
               fontSize: 13.5,
-              textDecoration: 'none',
+              cursor: probePhase === 'probing' ? 'wait' : 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.45rem',
             }}
           >
-            Open Chorus
+            {probePhase === 'probing' ? 'Verifying…' : 'Verify & open Chorus'}
             <ArrowRight size={14} />
-          </Link>
+          </button>
           <Link
             href="/join"
             style={{
@@ -837,6 +951,42 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
             Advanced join
           </Link>
         </div>
+
+        {probePhase === 'error' && (
+          <div
+            role="alert"
+            style={{
+              marginTop: '0.6rem',
+              padding: '0.7rem 0.85rem',
+              borderRadius: 5,
+              border: '1px solid rgba(246,168,154,0.35)',
+              background: 'rgba(60,30,30,0.3)',
+              color: '#f6a89a',
+              fontSize: 12.5,
+              lineHeight: 1.5,
+              wordBreak: 'break-word',
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 3 }}>Couldn&apos;t reach the orchestrator</div>
+            <div style={{ color: 'rgba(246,200,190,0.88)' }}>{probeMessage}</div>
+          </div>
+        )}
+        {probePhase === 'ok' && (
+          <div
+            role="status"
+            style={{
+              marginTop: '0.6rem',
+              padding: '0.6rem 0.85rem',
+              borderRadius: 5,
+              border: '1px solid rgba(143,212,168,0.35)',
+              background: 'rgba(30,60,40,0.32)',
+              color: 'rgba(200,240,210,0.92)',
+              fontSize: 12.5,
+            }}
+          >
+            Verified. Opening Chorus…
+          </div>
+        )}
 
         <div
           style={{
@@ -1124,25 +1274,28 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
               <ArrowRight size={14} />
             </button>
           ) : (
-            <Link
-              href="/"
-              onClick={onConnectOrchestrator}
+            <button
+              type="button"
+              onClick={onFinishSetup}
+              disabled={probePhase === 'probing'}
               style={{
                 padding: '0.6rem 1.25rem',
                 borderRadius: 4,
-                background: 'rgba(255,255,255,0.92)',
+                border: 'none',
+                background:
+                  probePhase === 'probing' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.92)',
                 color: '#050508',
                 fontWeight: 600,
                 fontSize: 13.5,
-                textDecoration: 'none',
+                cursor: probePhase === 'probing' ? 'wait' : 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '0.4rem',
               }}
             >
               <Shield size={13} />
-              Finish setup
-            </Link>
+              {probePhase === 'probing' ? 'Verifying…' : 'Finish setup'}
+            </button>
           )}
         </div>
       </div>
