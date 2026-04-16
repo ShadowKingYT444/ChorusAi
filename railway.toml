@@ -1,7 +1,6 @@
 [build]
-dockerfilePath = "Chorus/Dockerfile"
-buildContext = "Chorus"
-watchPatterns = ["Chorus/orchestrator/**", "Chorus/agent_backend/**", "Chorus/pyproject.toml", "Chorus/Dockerfile"]
+dockerfilePath = "Dockerfile"
+watchPatterns = ["Chorus/orchestrator/**", "Chorus/pyproject.toml", "Dockerfile"]
 
 [deploy]
 healthcheckPath = "/health"
