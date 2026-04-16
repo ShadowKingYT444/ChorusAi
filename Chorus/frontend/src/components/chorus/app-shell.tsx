@@ -10,7 +10,6 @@ import { ChorusChatStream, type ChatTurn } from './chat-stream'
 import { useNetworkStatus } from '@/hooks/use-network-status'
 import {
   createJob,
-  getPeers,
   isOrchestratorConfigured,
   registerJobAgents,
   type PeerEntry,
@@ -112,13 +111,12 @@ export function ChorusAppShell() {
   const [voices, setVoices] = useState(5)
   const [rounds, setRounds] = useState(3)
   const [bounty, setBounty] = useState(0.5)
-  const [demoAssist, setDemoAssist] = useState(true)
   const [sending, setSending] = useState(false)
   const [title, setTitle] = useState('New conversation')
   const [error, setError] = useState<string | null>(null)
 
   const readyPeerCount = status.peers.filter((peer) => Boolean(peer.address?.trim())).length
-  const maxVoices = demoAssist ? Math.max(status.online, DEMO_FILL_MAX_VOICES) : Math.max(1, readyPeerCount)
+  const maxVoices = Math.max(status.online, DEMO_FILL_MAX_VOICES)
   const clampedVoices = Math.min(Math.max(1, voices), maxVoices)
 
   const newChat = useCallback(() => {
@@ -143,7 +141,7 @@ export function ChorusAppShell() {
   const send = useCallback(async () => {
     if (!draft.trim() || sending) return
     if (!isOrchestratorConfigured()) {
-      setError('No orchestrator configured. Visit /setup or /join to connect.')
+      setError('No orchestrator configured. Visit /setup to connect your node.')
       return
     }
 
@@ -152,16 +150,9 @@ export function ChorusAppShell() {
     setSending(true)
 
     try {
-      const peerSnapshot = await getPeers()
-      const launchPlan = buildLaunchParticipants(peerSnapshot.peers, clampedVoices, demoAssist)
-
-      if (!demoAssist && launchPlan.liveCount < clampedVoices) {
-        throw new Error(
-          `Requested ${clampedVoices} live peers, but only ${launchPlan.liveCount} peer${launchPlan.liveCount === 1 ? '' : 's'} currently expose a public model URL.`,
-        )
-      }
+      const launchPlan = buildLaunchParticipants(status.peers, clampedVoices, true)
       if (launchPlan.participants.length === 0) {
-        throw new Error('No launch participants available.')
+        throw new Error('Set up your Ollama node first so Chorus has at least one live endpoint.')
       }
 
       const created = await createJob({
@@ -170,10 +161,7 @@ export function ChorusAppShell() {
         agent_count: launchPlan.participants.length,
         rounds,
         payout: bounty,
-        embedding_model_version:
-          launchPlan.syntheticCount > 0
-            ? `hybrid-demo:${launchPlan.liveCount}-live:${launchPlan.syntheticCount}-synthetic`
-            : 'live-consensus',
+        embedding_model_version: 'live-consensus',
       })
 
       await registerJobAgents(created.job_id, {
@@ -205,29 +193,23 @@ export function ChorusAppShell() {
     } finally {
       setSending(false)
     }
-  }, [bounty, clampedVoices, demoAssist, draft, rounds, router, sending])
+  }, [bounty, clampedVoices, draft, rounds, router, sending, status.peers])
 
   const hasTurns = turns.length > 0
   const openNetwork = useCallback(() => router.push('/app'), [router])
 
   const bottomHint = useMemo(() => {
     if (status.mode === 'unconfigured') {
-      return 'No orchestrator set — share a host URL via /join or /setup to connect.'
+      return 'No orchestrator set — run setup to connect your node.'
     }
     if (status.mode === 'offline') {
       return 'Orchestrator unreachable — check the host is running.'
     }
-    if (readyPeerCount === 0 && demoAssist) {
-      return 'No live peers online — demo fill will simulate the chorus.'
-    }
     if (readyPeerCount === 0) {
-      return 'No peers online — ask someone to join via /join.'
-    }
-    if (demoAssist && clampedVoices > readyPeerCount) {
-      return `Launching 1 live node and ${clampedVoices - 1} simulated peers.`
+      return 'Set up your Ollama node before launching a run.'
     }
     return null
-  }, [clampedVoices, demoAssist, readyPeerCount, status])
+  }, [readyPeerCount, status])
 
   return (
     <div className="flex h-[100dvh] w-[100vw] overflow-hidden" style={{ background: '#0a0a0c' }}>
@@ -261,10 +243,8 @@ export function ChorusAppShell() {
             <LaunchControls
               rounds={rounds}
               bounty={bounty}
-              demoAssist={demoAssist}
               onRoundsChange={setRounds}
               onBountyChange={setBounty}
-              onDemoAssistChange={setDemoAssist}
             />
             {bottomHint && (
               <div className="mb-2 font-mono text-[10.5px] text-white/55 text-center">
@@ -280,7 +260,6 @@ export function ChorusAppShell() {
               onVoicesChange={setVoices}
               status={status}
               maxVoices={maxVoices}
-              canSendWithoutPeers={demoAssist}
             />
           </div>
         </div>
@@ -292,17 +271,13 @@ export function ChorusAppShell() {
 function LaunchControls({
   rounds,
   bounty,
-  demoAssist,
   onRoundsChange,
   onBountyChange,
-  onDemoAssistChange,
 }: {
   rounds: number
   bounty: number
-  demoAssist: boolean
   onRoundsChange: (value: number) => void
   onBountyChange: (value: number) => void
-  onDemoAssistChange: (value: boolean) => void
 }) {
   return (
     <div
@@ -332,23 +307,20 @@ function LaunchControls({
         display={`$${bounty.toFixed(2)}`}
         onChange={onBountyChange}
       />
-      <button
-        type="button"
-        onClick={() => onDemoAssistChange(!demoAssist)}
-        className="h-fit self-end rounded-xl px-3 py-2 text-left transition-colors"
+      <div
+        className="h-fit self-end rounded-xl px-3 py-2"
         style={{
-          background: demoAssist ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
-          border: '1px solid',
-          borderColor: demoAssist ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
         }}
       >
         <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/75">
-          Demo Fill
+          Swarm
         </div>
         <div className="font-sans text-[12px] text-white/55">
-          {demoAssist ? '1 live node + synthetic swarm' : 'live peers only'}
+          Multi-round persona chorus
         </div>
-      </button>
+      </div>
     </div>
   )
 }

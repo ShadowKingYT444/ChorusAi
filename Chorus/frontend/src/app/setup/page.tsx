@@ -23,6 +23,8 @@ import { ConnectionTest } from '@/components/chorus/setup-wizard/connection-test
 import { OsTabs, detectOs, type OsKey } from '@/components/chorus/setup-wizard/os-tabs'
 import { StepShell } from '@/components/chorus/setup-wizard/step-shell'
 import {
+  MODEL_NAME_KEY,
+  MODEL_PUBLIC_URL_KEY,
   getOrchestratorBaseOverride,
   getSavedOllamaIp,
   saveOllamaIp,
@@ -31,9 +33,6 @@ import {
 
 type PathMode = 'local' | 'tunnel'
 type TunnelProvider = 'ngrok' | 'cloudflared'
-
-const MODEL_PUBLIC_URL_KEY = 'chorus_model_public_url'
-const MODEL_NAME_KEY = 'chorus_model_name'
 
 interface ModelChoice {
   id: string
@@ -495,7 +494,7 @@ export default function SetupPage() {
           }}
         />
         <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
-          Saved locally in this browser. Shared with <code>/join</code> so you don&apos;t retype it.
+          Saved locally in this browser so the main app can reuse it immediately.
         </p>
       </StepShell>
     ),
@@ -606,7 +605,7 @@ export default function SetupPage() {
         icon={<Radio size={18} />}
         eyebrow={`Step ${totalSteps} of ${totalSteps}`}
         title="Connect to the Chorus network"
-        subtitle="Point this browser at a signaling / orchestrator server. Once set, you'll hand off to /join to register."
+        subtitle="Point this browser at a signaling / orchestrator server. Once saved, the main app can use your Ollama node directly."
       >
         <div
           style={{
@@ -702,7 +701,7 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
           }}
         >
           <Link
-            href="/join"
+            href="/"
             onClick={onConnectOrchestrator}
             style={{
               padding: '0.6rem 1.15rem',
@@ -717,11 +716,11 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
               gap: '0.45rem',
             }}
           >
-            Join the network
+            Open Chorus
             <ArrowRight size={14} />
           </Link>
           <Link
-            href="/"
+            href="/join"
             style={{
               padding: '0.6rem 1rem',
               borderRadius: 4,
@@ -736,8 +735,8 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
               gap: '0.4rem',
             }}
           >
-            <Home size={13} />
-            Back to chat
+            <Radio size={13} />
+            Advanced join
           </Link>
         </div>
 
@@ -1025,7 +1024,7 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
             </button>
           ) : (
             <Link
-              href="/join"
+              href="/"
               onClick={onConnectOrchestrator}
               style={{
                 padding: '0.6rem 1.25rem',
@@ -1041,7 +1040,7 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
               }}
             >
               <Shield size={13} />
-              Finish & join
+              Finish setup
             </Link>
           )}
         </div>

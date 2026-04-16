@@ -229,6 +229,8 @@ const DEFAULT_TIMEOUT_MS = 30_000
 /** Browser-persisted override so LAN guests can use `http://<host-ip>:8000` without rebuilding. */
 export const ORCHESTRATOR_BASE_SESSION_KEY = 'chorus_orchestrator_override'
 export const ORCHESTRATOR_BASE_LOCAL_KEY = 'chorus_orchestrator_base'
+export const MODEL_PUBLIC_URL_KEY = 'chorus_model_public_url'
+export const MODEL_NAME_KEY = 'chorus_model_name'
 
 function normalizeOrchestratorBase(url: string): string {
   return url.trim().replace(/\/+$/, '')
@@ -380,6 +382,16 @@ export function getSavedOllamaIp(): string {
 export function saveOllamaIp(ip: string): void {
   if (typeof window === 'undefined') return
   localStorage.setItem(OLLAMA_IP_KEY, ip.trim())
+}
+
+export function getSavedModelPublicUrl(): string {
+  if (typeof window === 'undefined') return ''
+  return localStorage.getItem(MODEL_PUBLIC_URL_KEY)?.trim() ?? ''
+}
+
+export function getSavedModelName(): string {
+  if (typeof window === 'undefined') return ''
+  return localStorage.getItem(MODEL_NAME_KEY)?.trim() ?? ''
 }
 
 export async function getPeers(): Promise<PeersResponse> {

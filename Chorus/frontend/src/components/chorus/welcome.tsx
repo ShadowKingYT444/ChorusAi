@@ -76,10 +76,10 @@ export function ChorusWelcome({ status, onPick }: Props) {
                 className="font-sans text-[13.5px] text-white/95 tracking-tight"
                 style={{ fontWeight: 600 }}
               >
-                Run your own LLM
+                Connect your node
               </span>
               <span className="font-sans text-[12px] text-white/60 leading-relaxed">
-                Install Ollama locally and join the chorus — takes 3 minutes.
+                Install Ollama locally and wire it into Chorus in a few minutes.
               </span>
             </div>
             <span

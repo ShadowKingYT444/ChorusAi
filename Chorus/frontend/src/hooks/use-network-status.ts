@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getPeers,
+  getSavedModelName,
+  getSavedModelPublicUrl,
   isOrchestratorConfigured,
   type PeerEntry,
 } from '@/lib/api/orchestrator'
@@ -18,6 +20,29 @@ export interface NetworkStatus {
   mode: 'live' | 'offline' | 'unconfigured'
   lastUpdated: number | null
   refresh: () => void
+}
+
+function buildLocalPeer(): PeerEntry | null {
+  const address = getSavedModelPublicUrl()
+  if (!address) return null
+  const now = Math.round(Date.now() / 1000)
+  return {
+    peer_id: 'local-ollama',
+    address,
+    model: getSavedModelName() || 'ollama-node',
+    joined_at: now,
+    status: 'idle',
+    verified: false,
+  }
+}
+
+function mergePeers(remotePeers: PeerEntry[]): PeerEntry[] {
+  const localPeer = buildLocalPeer()
+  const merged = [...remotePeers]
+  if (localPeer && !merged.some((peer) => peer.address?.trim() === localPeer.address)) {
+    merged.unshift(localPeer)
+  }
+  return merged
 }
 
 export function useNetworkStatus(pollMs = 4000): NetworkStatus {
@@ -38,7 +63,7 @@ export function useNetworkStatus(pollMs = 4000): NetworkStatus {
     try {
       const res = await getPeers()
       if (!mounted.current) return
-      setPeers(res.peers ?? [])
+      setPeers(mergePeers(res.peers ?? []))
       setMode('live')
       setLastUpdated(Date.now())
     } catch {

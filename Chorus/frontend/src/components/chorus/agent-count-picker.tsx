@@ -66,7 +66,6 @@ export function AgentCountPicker({ value, onChange, status, maxVoices }: Props) 
             className="font-mono text-[14px] text-white/95 tabular-nums min-w-[36px] text-center"
           >
             {clamped}
-            <span className="text-white/35">/{max}</span>
           </motion.div>
           <button
             type="button"
@@ -120,7 +119,7 @@ export function AgentCountPicker({ value, onChange, status, maxVoices }: Props) 
                 borderColor: active ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)',
               }}
             >
-              {p === max ? `all · ${p}` : p}
+              {p}
             </button>
           )
         })}
