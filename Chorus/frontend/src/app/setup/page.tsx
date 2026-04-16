@@ -259,13 +259,17 @@ export default function SetupPage() {
     },
   }
 
+  const TRAY_WARNING =
+    "Don't rely on the system-tray Ollama for env vars — on Windows and macOS the tray app frequently keeps stale environment values from the user's login session. Use `ollama serve` in a terminal instead. The terminal will show OLLAMA_ORIGINS in its boot log so you can confirm the value is live."
+
   const networkCommandsLan: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: 'launchctl setenv OLLAMA_HOST "0.0.0.0"\n# then quit Ollama from the menu bar and relaunch it',
-      note: 'Alternatively, run `OLLAMA_HOST=0.0.0.0 ollama serve` in a terminal instead of the app.',
+      code: '# Quit any tray Ollama first (menu bar → Quit), then in Terminal:\nOLLAMA_HOST=0.0.0.0 ollama serve\n# Leave this terminal open — Ollama runs here. Boot log should show:\n#   "OLLAMA_HOST: 0.0.0.0"',
+      note: TRAY_WARNING,
     },
     windows: {
-      code: "# In PowerShell (regular user, no admin needed):\n[System.Environment]::SetEnvironmentVariable('OLLAMA_HOST','0.0.0.0','User')\n# then right-click the Ollama tray icon → Quit, and relaunch it",
+      code: '# In PowerShell. The tray Ollama often misses env vars set after login,\n# so kill it and run `ollama serve` directly:\nGet-Process ollama* -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should show: "OLLAMA_HOST: 0.0.0.0"',
+      note: TRAY_WARNING,
     },
     linux: {
       code: 'sudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_HOST=0.0.0.0"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama',
@@ -275,11 +279,12 @@ export default function SetupPage() {
 
   const networkCommandsTunnel: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: `launchctl setenv OLLAMA_ORIGINS "${origin}"\nlaunchctl setenv OLLAMA_HOST "127.0.0.1"\n# then quit Ollama from the menu bar and relaunch it`,
-      note: 'This allows the deployed Chorus site to call your local Ollama via the tunnel.',
+      code: `# Quit any tray Ollama first (menu bar → Quit), then in Terminal:\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve\n# Leave this terminal open — Ollama runs here. Boot log should print:\n#   "OLLAMA_ORIGINS: ${origin}"`,
+      note: TRAY_WARNING,
     },
     windows: {
-      code: `[System.Environment]::SetEnvironmentVariable('OLLAMA_ORIGINS','${origin}','User')\n[System.Environment]::SetEnvironmentVariable('OLLAMA_HOST','127.0.0.1','User')\n# then right-click the Ollama tray icon → Quit, and relaunch it`,
+      code: `# In PowerShell. The tray Ollama often ignores env vars set after login,\n# so kill it and run \`ollama serve\` directly with the env var inline:\nGet-Process ollama* -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should print: "OLLAMA_ORIGINS: ${origin}"\n#\n# (Optional) Also persist for future shells:\n# [System.Environment]::SetEnvironmentVariable('OLLAMA_ORIGINS','${origin}','User')`,
+      note: TRAY_WARNING,
     },
     linux: {
       code: `sudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_ORIGINS=${origin}"\n#   Environment="OLLAMA_HOST=127.0.0.1"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama`,
@@ -782,12 +787,12 @@ export default function SetupPage() {
         eyebrow={`Step ${totalSteps} of ${totalSteps}`}
         title="Connect to the Chorus network"
         subtitle={
-          orchestratorBaseFromEnv
-            ? "This deployment is already wired to a Chorus orchestrator. Click Finish setup to verify and continue."
+          orchestratorBase.trim()
+            ? "Orchestrator URL is set. Click Finish setup — we'll verify it's reachable before continuing."
             : "Point this browser at a signaling / orchestrator server, then click Finish setup so we can verify it's reachable."
         }
       >
-        {orchestratorBaseFromEnv ? (
+        {orchestratorBase.trim() ? (
           <div
             style={{
               padding: '0.75rem 0.9rem',
@@ -801,11 +806,15 @@ export default function SetupPage() {
             }}
           >
             <div style={{ fontWeight: 600, marginBottom: 4, color: 'rgba(220,245,225,0.98)' }}>
-              Public Chorus signaling server pre-configured
+              {orchestratorBaseFromEnv
+                ? 'Public Chorus signaling server pre-configured'
+                : 'Orchestrator URL set'}
             </div>
             <div>
-              The orchestrator URL below was provided by this deployment. You don&apos;t need to host
-              anything — just click <strong>Finish setup</strong>. We&apos;ll do a health check first
+              {orchestratorBaseFromEnv
+                ? "The orchestrator URL below was provided by this deployment. You don't need to host anything — just click "
+                : 'Using the URL below. Click '}
+              <strong>Finish setup</strong>. The wizard will GET <code>{`${orchestratorBase.trim().replace(/\/+$/, '')}/health`}</code>{' '}
               and surface the exact problem if it fails.
             </div>
           </div>
@@ -823,7 +832,7 @@ export default function SetupPage() {
             }}
           >
             <div style={{ fontWeight: 600, marginBottom: 6, color: 'rgba(230,238,255,0.98)' }}>
-              Don&apos;t have an orchestrator URL yet?
+              No orchestrator URL configured for this deployment
             </div>
             <div style={{ marginBottom: 8 }}>
               Easiest path: deploy your own backend to Railway with one click —{' '}
@@ -838,7 +847,7 @@ export default function SetupPage() {
               , then paste the resulting <code>https://*.up.railway.app</code> URL below.
             </div>
             <div style={{ marginBottom: 8 }}>
-              Or run it locally from a clone of{' '}
+              Self-hosting locally is also possible (Python 3.11+ from a clone of{' '}
               <a
                 href="https://github.com/ShadowKingYT444/ChorusAi"
                 target="_blank"
@@ -846,25 +855,8 @@ export default function SetupPage() {
                 style={{ color: 'rgba(180,210,255,0.95)' }}
               >
                 the repo
-              </a>{' '}
-              (needs Python 3.11+ — these commands assume you&apos;ve already <code>git clone</code>d it):
-            </div>
-            <CodeBlock
-              code={`# from the directory that contains the cloned repo
-cd ChorusAi/Chorus
-
-# one-time install (installs the orchestrator package)
-python -m pip install -e .
-
-# start the signaling / orchestrator server
-python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
-              label="shell"
-            />
-            <div style={{ marginTop: 8, fontSize: 11.5, color: 'rgba(200,215,245,0.7)' }}>
-              Common gotcha: the <code>cd ChorusAi/Chorus</code> step matters — running pip from
-              your home directory throws <code>does not appear to be a Python project</code>, and
-              skipping the install throws <code>No module named &apos;orchestrator&apos;</code>.
-              Then use <code>http://&lt;your-lan-ip&gt;:8000</code> below.
+              </a>
+              ), but Railway is the recommended path for hosted users.
             </div>
           </div>
         )}
