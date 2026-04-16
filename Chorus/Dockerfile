@@ -4,7 +4,6 @@ WORKDIR /app
 
 COPY pyproject.toml ./
 COPY orchestrator/ orchestrator/
-COPY agent_backend/ agent_backend/
 
 RUN pip install --no-cache-dir . && mkdir -p /data
 

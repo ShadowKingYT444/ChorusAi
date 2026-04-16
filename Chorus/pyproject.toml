@@ -35,6 +35,9 @@ train = [
   "transformers>=4.36.0",
 ]
 
+[tool.setuptools.packages.find]
+include = ["orchestrator*"]
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
