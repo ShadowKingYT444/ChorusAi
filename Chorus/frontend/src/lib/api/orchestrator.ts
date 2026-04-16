@@ -234,7 +234,19 @@ export const MODEL_NAME_KEY = 'chorus_model_name'
 export const MODEL_SETUP_VERIFIED_KEY = 'chorus_model_setup_verified'
 
 function normalizeOrchestratorBase(url: string): string {
-  return url.trim().replace(/\/+$/, '')
+  let s = url.trim().replace(/\/+$/, '')
+  if (!s) return s
+  // Add a scheme if missing. Bare domains/IPs would otherwise be treated as
+  // relative paths by `fetch()` and resolve against the current Vercel origin
+  // (which returns 404 for unrelated paths — the most common cause of
+  // "/health 404" reports).
+  if (!/^https?:\/\//i.test(s)) {
+    const host = s.split('/')[0]
+    const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+    const isPrivateIpv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+    s = `${isLoopback || isPrivateIpv4 ? 'http' : 'https'}://${s}`
+  }
+  return s
 }
 
 export function getOrchestratorBaseOverride(): string | null {
