@@ -166,7 +166,7 @@ export default function SetupPage() {
 
   const installCommands: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: '# Download the app\nopen https://ollama.com/download/Ollama-darwin.zip\n\n# Or via Homebrew\nbrew install ollama',
+      code: '# Download the app\nopen https://ollama.com/download/Ollama.dmg\n\n# Or via Homebrew\nbrew install --cask ollama',
       note: 'After installing, launch Ollama once so the tray icon shows up.',
     },
     windows: {
@@ -608,6 +608,48 @@ export default function SetupPage() {
         title="Connect to the Chorus network"
         subtitle="Point this browser at a signaling / orchestrator server. Once set, you'll hand off to /join to register."
       >
+        <div
+          style={{
+            padding: '0.75rem 0.9rem',
+            borderRadius: 5,
+            border: '1px solid rgba(180,200,255,0.22)',
+            background: 'rgba(30,40,70,0.32)',
+            color: 'rgba(210,225,255,0.9)',
+            fontSize: 12.5,
+            lineHeight: 1.55,
+            marginBottom: '0.8rem',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 6, color: 'rgba(230,238,255,0.98)' }}>
+            Don&apos;t have an orchestrator URL yet?
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            Point this field at any online Chorus signaling server. If you&apos;re running your own,
+            clone{' '}
+            <a
+              href="https://github.com/ShadowKingYT444/ChorusAi"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'rgba(180,210,255,0.95)' }}
+            >
+              the repo
+            </a>{' '}
+            and run these from <code>Chorus/</code> (needs Python 3.11+):
+          </div>
+          <CodeBlock
+            code={`# one-time install
+python -m pip install -e .
+
+# start the signaling / orchestrator server
+python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
+            label="shell"
+          />
+          <div style={{ marginTop: 8, fontSize: 11.5, color: 'rgba(200,215,245,0.7)' }}>
+            Then use <code>http://&lt;your-lan-ip&gt;:8000</code> below. For a public deployment,
+            forward TCP 8000 on your router or front it with a tunnel.
+          </div>
+        </div>
+
         <label
           style={{
             display: 'block',
