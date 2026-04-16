@@ -1,0 +1,10 @@
+[build]
+dockerfilePath = "Chorus/Dockerfile"
+buildContext = "Chorus"
+watchPatterns = ["Chorus/orchestrator/**", "Chorus/agent_backend/**", "Chorus/pyproject.toml", "Chorus/Dockerfile"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
