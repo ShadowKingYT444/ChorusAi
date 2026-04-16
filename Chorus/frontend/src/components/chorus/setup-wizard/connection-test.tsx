@@ -144,7 +144,14 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       }
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // Bypass ngrok's free-tier browser warning page. Any value works;
+          // ngrok skips the HTML interstitial when this header is present,
+          // which would otherwise serve a no-CORS HTML page and surface as
+          // "Failed to fetch" in the browser.
+          'ngrok-skip-browser-warning': 'true',
+        },
         body: JSON.stringify(body),
       })
       const raw = await res.text()
@@ -173,7 +180,13 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         const origin = typeof window !== 'undefined' ? window.location.origin : ''
         setTip(
           mode === 'tunnel'
-            ? `Browser blocked the fetch. Set OLLAMA_ORIGINS=${origin} on the Ollama machine and confirm the tunnel URL is live.`
+            ? [
+                `"Failed to fetch" means the browser never got a valid response. Three common causes, in order:`,
+                `1. Tunnel is offline — open ${target.trim().replace(/\/+$/, '')}/api/tags in a new browser tab. If you see an error page or nothing loads, restart ngrok.`,
+                `2. OLLAMA_ORIGINS isn't actually live. On Windows, setting the variable via PowerShell does NOT apply to an already-running Ollama. Right-click the Ollama tray icon → Quit (don't just close the window), then relaunch Ollama from the Start menu. Verify with: Get-Process ollama | Stop-Process; then $env:OLLAMA_ORIGINS; then start ollama.`,
+                `3. OLLAMA_ORIGINS value mismatch. It must be EXACTLY ${origin} (no trailing slash, no path). Try setting it to * temporarily to confirm that's the issue — if * works, your specific value is off.`,
+                `Also: make sure the URL saved above is your ngrok HTTPS URL, not the ngrok dashboard URL.`,
+              ].join(' ')
             : 'The Next server could not reach Ollama. Check OLLAMA_HOST=0.0.0.0 and firewall for port 11434.',
         )
       }
