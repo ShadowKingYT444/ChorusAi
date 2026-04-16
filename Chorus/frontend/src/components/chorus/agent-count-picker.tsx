@@ -9,10 +9,11 @@ interface Props {
   value: number
   onChange: (n: number) => void
   status: NetworkStatus
+  maxVoices?: number
 }
 
-export function AgentCountPicker({ value, onChange, status }: Props) {
-  const max = Math.max(1, status.online)
+export function AgentCountPicker({ value, onChange, status, maxVoices }: Props) {
+  const max = Math.max(1, maxVoices ?? status.online)
   const clamped = Math.min(Math.max(1, value), max)
   const pct = (clamped / max) * 100
 

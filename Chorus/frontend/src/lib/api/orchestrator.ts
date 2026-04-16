@@ -132,6 +132,35 @@ export interface PeersResponse {
   peers: PeerEntry[]
 }
 
+export interface CreateJobRequest {
+  context: string
+  prompt: string
+  agent_count: number
+  rounds: number
+  payout: number
+  embedding_model_version?: string | null
+}
+
+export interface CreateJobResponse {
+  job_id: string
+  status: JobStatus
+}
+
+export interface SlotRegistration {
+  completion_base_url: string
+  bearer_token?: string | null
+  external_participant_id?: string | null
+}
+
+export interface RegisterAgentsRequest {
+  slots: Record<string, SlotRegistration>
+}
+
+export interface RegisterAgentsResponse {
+  ok: boolean
+  registered_slots: string[]
+}
+
 export interface BroadcastPlanRequest {
   prompt: string
   timeout_ms?: number
@@ -355,6 +384,23 @@ export function saveOllamaIp(ip: string): void {
 
 export async function getPeers(): Promise<PeersResponse> {
   return requestJson<PeersResponse>('/peers')
+}
+
+export async function createJob(req: CreateJobRequest): Promise<CreateJobResponse> {
+  return requestJson<CreateJobResponse>('/jobs', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function registerJobAgents(
+  jobId: string,
+  req: RegisterAgentsRequest,
+): Promise<RegisterAgentsResponse> {
+  return requestJson<RegisterAgentsResponse>(`/jobs/${encodeURIComponent(jobId)}/agents`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
 }
 
 export async function createBroadcastPlan(req: BroadcastPlanRequest): Promise<BroadcastPlanResponse> {

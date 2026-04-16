@@ -41,6 +41,21 @@ const EMPTY_RESULTS: SimulationResults = {
 }
 const EMPTY_EDGES: RuntimeEdge[] = []
 
+function mergeLaunchedPeers(livePeers: PeerEntry[], launchedPeers: PeerEntry[] | undefined): PeerEntry[] {
+  if (!launchedPeers || launchedPeers.length === 0) {
+    return [...livePeers].sort((a, b) => a.peer_id.localeCompare(b.peer_id))
+  }
+
+  const liveById = new Map(livePeers.map((peer) => [peer.peer_id, peer]))
+  const merged: PeerEntry[] = launchedPeers.map((peer) => liveById.get(peer.peer_id) ?? peer)
+  for (const peer of livePeers) {
+    if (!merged.some((item) => item.peer_id === peer.peer_id)) {
+      merged.push(peer)
+    }
+  }
+  return merged
+}
+
 function statusToType(status: JobLine['status']): RuntimeMessage['type'] {
   if (status === 'pruned') return 'cluster'
   if (status === 'suspect') return 'critique'
@@ -135,11 +150,16 @@ export function useJobRuntime(jobIdFromRoute?: string | null): JobRuntimeState {
       try {
         const snapshot = await getPeers()
         if (cancelled) return
-        const sortedPeers = [...snapshot.peers].sort((a, b) => a.peer_id.localeCompare(b.peer_id))
-        setConnectedPeers(sortedPeers)
-        setAgentCompletionOrigins(sortedPeers.map((p) => p.peer_id))
+        const mergedPeers = mergeLaunchedPeers(snapshot.peers, effectiveSession.launchedPeers)
+        setConnectedPeers(mergedPeers)
+        setAgentCompletionOrigins(mergedPeers.map((p) => p.peer_id))
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load peers')
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load peers')
+          const fallbackPeers = mergeLaunchedPeers([], effectiveSession.launchedPeers)
+          setConnectedPeers(fallbackPeers)
+          setAgentCompletionOrigins(fallbackPeers.map((p) => p.peer_id))
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -152,7 +172,7 @@ export function useJobRuntime(jobIdFromRoute?: string | null): JobRuntimeState {
       {
         onEvent: (event) => {
           if (event.type === 'peer_count') {
-            const peers = [...event.peers].sort((a, b) => a.peer_id.localeCompare(b.peer_id))
+            const peers = mergeLaunchedPeers(event.peers, effectiveSession.launchedPeers)
             setConnectedPeers(peers)
             setAgentCompletionOrigins(peers.map((p) => p.peer_id))
           }

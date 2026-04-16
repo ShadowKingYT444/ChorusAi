@@ -11,6 +11,7 @@ export interface SimulationSession extends SimulationJob {
   jobId?: string
   mode: 'mock' | 'backend'
   createdAt: string
+  launchedPeers?: PeerEntry[]
 }
 
 export interface RuntimeMessage extends AgentMessage {

@@ -10,6 +10,7 @@ import httpx
 import sniffio
 
 from orchestrator.broadcast_completions import normalize_completion_url
+from orchestrator.demo_agent import is_demo_completion_base, invoke_demo_completion
 from orchestrator.models import CompletionResult, JobRecord, SlotRegistration
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,15 @@ class AgentInvoker:
         persona: str,
         context_text: str,
     ) -> CompletionResult:
+        if is_demo_completion_base(str(registration.completion_base_url)):
+            return await invoke_demo_completion(
+                job=job,
+                slot_id=slot_id,
+                round_index=round_index,
+                persona=persona,
+                context_text=context_text,
+            )
+
         target_url = normalize_completion_url(str(registration.completion_base_url))
         self._validate_target(target_url)
 

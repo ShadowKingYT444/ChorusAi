@@ -141,3 +141,60 @@ async def test_full_job_two_slots_two_rounds(echo_agent_base_url: str) -> None:
             assert rd["round"] in (1, 2)
             assert "slot-a" in rd["slots"]
             assert "slot-b" in rd["slots"]
+
+
+@pytest.mark.anyio
+@pytest.mark.integration
+async def test_full_job_demo_slots_complete() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", timeout=30.0) as client:
+        cr = await client.post(
+            "/jobs",
+            json={
+                "context": "You are participating in a distributed reasoning benchmark.",
+                "prompt": "What's the most underrated approach to reducing AI hallucinations?",
+                "agent_count": 3,
+                "rounds": 3,
+                "payout": 0.5,
+                "embedding_model_version": "demo-e2e",
+            },
+        )
+        assert cr.status_code == 200, cr.text
+        job_id = cr.json()["job_id"]
+
+        reg = await client.post(
+            f"/jobs/{job_id}/agents",
+            json={
+                "slots": {
+                    "chorus-skeptic-1": {"completion_base_url": "demo://chorus-skeptic-1"},
+                    "chorus-optimist-2": {"completion_base_url": "demo://chorus-optimist-2"},
+                    "chorus-analyst-3": {"completion_base_url": "demo://chorus-analyst-3"},
+                }
+            },
+        )
+        assert reg.status_code == 200, reg.text
+
+        deadline = time.monotonic() + 30.0
+        last: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            gr = await client.get(f"/jobs/{job_id}")
+            assert gr.status_code == 200, gr.text
+            last = gr.json()
+            if last.get("status") == "completed":
+                break
+            if last.get("status") == "failed":
+                raise AssertionError(f"demo job failed: {last!r}")
+            await anyio.sleep(0.08)
+
+        assert last.get("status") == "completed", f"timeout or bad state: {last!r}"
+        assert last.get("final_answer")
+        assert last.get("settlement_preview") is not None
+
+        op = await client.get(f"/jobs/{job_id}/operator")
+        assert op.status_code == 200
+        body = op.json()
+        assert len(body["rounds"]) == 3
+        for rd in body["rounds"]:
+            assert "chorus-skeptic-1" in rd["slots"]
+            assert "chorus-optimist-2" in rd["slots"]
+            assert "chorus-analyst-3" in rd["slots"]

@@ -16,6 +16,8 @@ interface Props {
   voices: number
   onVoicesChange: (n: number) => void
   status: NetworkStatus
+  maxVoices?: number
+  canSendWithoutPeers?: boolean
   placeholder?: string
 }
 
@@ -27,11 +29,13 @@ export function ChorusComposer({
   voices,
   onVoicesChange,
   status,
+  maxVoices,
+  canSendWithoutPeers = false,
   placeholder = 'Ask the chorus…',
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const hasText = value.trim().length > 0
-  const canSend = hasText && !disabled && status.online > 0
+  const canSend = hasText && !disabled && (status.online > 0 || canSendWithoutPeers)
 
   const autoSize = useCallback(() => {
     const el = ref.current
@@ -100,7 +104,12 @@ export function ChorusComposer({
           </button>
 
           <div className="flex-1 min-w-0 px-1">
-            <AgentCountPicker value={voices} onChange={onVoicesChange} status={status} />
+            <AgentCountPicker
+              value={voices}
+              onChange={onVoicesChange}
+              status={status}
+              maxVoices={maxVoices}
+            />
           </div>
 
           <button
@@ -124,7 +133,9 @@ export function ChorusComposer({
       <div className="mt-2 text-center font-mono text-[10px] text-white/35 tracking-[0.08em]">
         {status.mode === 'live'
           ? status.online > 0
-            ? `Network live · ${status.online} peer${status.online === 1 ? '' : 's'} answering in parallel`
+            ? `Network live · ${status.online} peer${status.online === 1 ? '' : 's'} online${canSendWithoutPeers && voices > status.online ? ` · demo fill to ${voices}` : ''}`
+            : canSendWithoutPeers
+            ? 'Network live · no peers online · demo fill ready'
             : 'Network live · waiting for peers to join'
           : status.mode === 'unconfigured'
           ? 'No orchestrator set · open /setup or /join to connect'
