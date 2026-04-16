@@ -27,7 +27,9 @@ import {
   MODEL_PUBLIC_URL_KEY,
   getOrchestratorBaseOverride,
   getSavedOllamaIp,
+  isSavedModelVerified,
   saveOllamaIp,
+  setSavedModelVerified,
   setOrchestratorBaseOverride,
 } from '@/lib/api/orchestrator'
 
@@ -121,6 +123,7 @@ export default function SetupPage() {
   // Reset test state when key inputs change.
   useEffect(() => {
     setTestOk(false)
+    setSavedModelVerified(false)
   }, [mode, lanIp, tunnelUrl, model])
 
   // Build step list conditional on mode.
@@ -211,15 +214,34 @@ export default function SetupPage() {
         icon={<Laptop size={18} />}
         eyebrow={`Step 1 of ${totalSteps}`}
         title="Pick your path"
-        subtitle="Chorus is a swarm of peer LLMs. You host one — Chorus fans every prompt across the network, streams answers back live, merges them into a signed consensus response, and pays out by impact. You need an OpenAI-compatible endpoint on your machine; choose how it should be reached."
+        subtitle="First decide where Ollama is running. If Chorus and Ollama are on the same computer, use the local path and `127.0.0.1`. Only use a LAN IP if Ollama is on a different machine. Only use ngrok/cloudflared if you are opening a deployed Chorus site over the internet."
       >
+        <div
+          style={{
+            padding: '0.8rem 0.95rem',
+            borderRadius: 6,
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.025)',
+            fontSize: 12.5,
+            color: 'rgba(255,255,255,0.72)',
+            lineHeight: 1.6,
+            marginBottom: '0.85rem',
+          }}
+        >
+          <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginBottom: 6 }}>
+            The simplest demo setup
+          </div>
+          <div>1. Run Ollama on the same laptop as Chorus.</div>
+          <div>2. In the test step, enter <code>127.0.0.1</code>.</div>
+          <div>3. You do not need ngrok for that path.</div>
+        </div>
         <div style={{ display: 'grid', gap: '0.7rem' }}>
           <PathCard
             selected={mode === 'local'}
             onClick={() => setMode('local')}
             icon={<Home size={16} />}
             title="Run locally (dev mode)"
-            description="You're running `npm run dev` on this machine. Peers on your LAN can reach you directly."
+            description="Best option for a demo. If Ollama is on this same machine, use `127.0.0.1`. If Ollama is on another machine on your Wi-Fi, use its `192.168.x.x` address so this Next.js server can reach it."
             hint={isDeployedHost() ? undefined : 'Default — you seem to be running on localhost.'}
           />
           <PathCard
@@ -227,7 +249,7 @@ export default function SetupPage() {
             onClick={() => setMode('tunnel')}
             icon={<Cloud size={16} />}
             title="Deploy & join the public network"
-            description="You're using the deployed Chorus site. Expose your local Ollama via an https tunnel so the network can call you."
+            description="Use this only if Chorus is running on a deployed site. `ngrok` or `cloudflared` gives your local Ollama a temporary public https URL."
             hint={isDeployedHost() ? 'Recommended — you are on a deployed instance.' : undefined}
           />
         </div>
@@ -353,10 +375,28 @@ export default function SetupPage() {
         title={mode === 'local' ? 'Enable LAN access' : 'Allow the deployed site'}
         subtitle={
           mode === 'local'
-            ? 'By default Ollama only listens on localhost. Bind it to 0.0.0.0 so LAN peers can reach it.'
-            : `Ollama blocks unknown origins by default. Whitelist ${origin} so the browser request isn't rejected.`
+            ? 'Only do this if Ollama is on a different machine from Chorus. If Ollama and Chorus are on the same computer, you can skip straight to the test step and use 127.0.0.1.'
+            : `Ollama blocks unknown origins by default. Whitelist ${origin} so the browser request is accepted through the tunnel.`
         }
       >
+        {mode === 'local' && (
+          <div
+            style={{
+              padding: '0.7rem 0.85rem',
+              borderRadius: 5,
+              border: '1px solid rgba(180,200,255,0.22)',
+              background: 'rgba(30,40,70,0.26)',
+              fontSize: 12.5,
+              color: 'rgba(220,230,255,0.88)',
+              lineHeight: 1.55,
+              marginBottom: '0.8rem',
+            }}
+          >
+            Plain English: if Ollama is on the <strong>same PC</strong> as Chorus, leave it local and test with{' '}
+            <code>127.0.0.1</code>. If Ollama is on a <strong>different PC</strong>, then you must expose it on your LAN with{' '}
+            <code>OLLAMA_HOST=0.0.0.0</code>.
+          </div>
+        )}
         <OsTabs
           value={os}
           onChange={setOs}
@@ -385,8 +425,28 @@ export default function SetupPage() {
         icon={<Globe2 size={18} />}
         eyebrow={`Step 5 of ${totalSteps}`}
         title="Expose Ollama to the internet"
-        subtitle="Pick a tunnel provider, run the command, paste the https URL it prints."
+        subtitle="A tunnel is a small program that gives your computer a temporary public URL. Chorus uses that URL to reach your local Ollama when the site itself is not running on your laptop."
       >
+        <div
+          style={{
+            padding: '0.75rem 0.9rem',
+            borderRadius: 5,
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.025)',
+            fontSize: 12.5,
+            color: 'rgba(255,255,255,0.72)',
+            lineHeight: 1.6,
+            marginBottom: '0.8rem',
+          }}
+        >
+          <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginBottom: 6 }}>
+            What is ngrok?
+          </div>
+          <div>
+            `ngrok` is an app you run on your computer. It creates an <strong>https URL on the public internet</strong> and forwards requests from that URL to{' '}
+            <code>http://localhost:11434</code>, where Ollama is running.
+          </div>
+        </div>
         <div
           role="tablist"
           aria-label="Tunnel provider"
@@ -437,7 +497,7 @@ export default function SetupPage() {
               <span style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
                 Forwarding https://abc-123.ngrok-free.app → http://localhost:11434
               </span>
-              .
+              . Copy that https URL into the field below.
             </p>
           </>
         ) : (
@@ -457,7 +517,7 @@ export default function SetupPage() {
               <span style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
                 https://random-words.trycloudflare.com
               </span>
-              .
+              . Copy that https URL into the field below.
             </p>
           </>
         )}
@@ -506,12 +566,44 @@ export default function SetupPage() {
         title="Test your setup"
         subtitle={
           mode === 'local'
-            ? 'We will send a tiny chat request through the Next proxy to your LAN IP.'
-            : 'We will send a tiny chat request directly from your browser to the tunnel URL.'
+            ? 'Run this before you continue. If Ollama is on this same computer, use 127.0.0.1. If it is on another computer, use its 192.168.x.x address.'
+            : 'Run this before you continue. We will call the public tunnel URL directly from your browser.'
         }
       >
         {mode === 'local' ? (
           <>
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setLanIp('127.0.0.1')}
+                style={{
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: 4,
+                  border: '1px solid rgba(180,200,255,0.22)',
+                  background: 'rgba(30,40,70,0.32)',
+                  color: 'rgba(220,230,255,0.92)',
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                }}
+              >
+                Ollama is on this computer
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanIp('')}
+                style={{
+                  padding: '0.45rem 0.75rem',
+                  borderRadius: 4,
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(255,255,255,0.02)',
+                  color: 'rgba(255,255,255,0.72)',
+                  fontSize: 12.5,
+                  cursor: 'pointer',
+                }}
+              >
+                Ollama is on another computer
+              </button>
+            </div>
             <label
               style={{
                 display: 'block',
@@ -521,12 +613,12 @@ export default function SetupPage() {
                 color: 'rgba(255,255,255,0.5)',
               }}
             >
-              Your LAN IP (running Ollama)
+              Ollama address
             </label>
             <input
               value={lanIp}
               onChange={(e) => setLanIp(e.target.value)}
-              placeholder="192.168.1.10"
+              placeholder="127.0.0.1 or 192.168.1.10"
               autoComplete="off"
               spellCheck={false}
               style={{
@@ -552,9 +644,15 @@ export default function SetupPage() {
               }}
             >
               <div style={{ marginBottom: 4, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>
-                Find your LAN IP
+                Which address should I use?
               </div>
-              <div style={{ fontFamily: 'var(--font-geist-mono), monospace', fontSize: 11.5 }}>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: 'rgba(255,255,255,0.68)' }}>
+                Same computer as Chorus: use <code>127.0.0.1</code>.
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.55, color: 'rgba(255,255,255,0.68)' }}>
+                Different computer on your Wi-Fi/LAN: use that machine&apos;s <code>192.168.x.x</code> address.
+              </div>
+              <div style={{ fontFamily: 'var(--font-geist-mono), monospace', fontSize: 11.5, marginTop: 6 }}>
                 Windows: <span style={{ color: 'rgba(200,220,255,0.9)' }}>ipconfig</span>
                 {'  ·  '}
                 macOS: <span style={{ color: 'rgba(200,220,255,0.9)' }}>ipconfig getifaddr en0</span>
@@ -770,6 +868,9 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000`}
           </div>
           <div style={{ marginTop: 4 }}>
             Peer endpoint <code>{deriveModelPublicUrl(mode, lanIp, tunnelUrl) || '(not set yet)'}</code>
+          </div>
+          <div style={{ marginTop: 4 }}>
+            Status: {isSavedModelVerified() ? <strong>verified</strong> : <strong>not verified yet</strong>}
           </div>
         </div>
 

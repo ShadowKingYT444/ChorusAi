@@ -5,6 +5,7 @@ import {
   getPeers,
   getSavedModelName,
   getSavedModelPublicUrl,
+  isSavedModelVerified,
   isOrchestratorConfigured,
   type PeerEntry,
 } from '@/lib/api/orchestrator'
@@ -24,7 +25,7 @@ export interface NetworkStatus {
 
 function buildLocalPeer(): PeerEntry | null {
   const address = getSavedModelPublicUrl()
-  if (!address) return null
+  if (!address || !isSavedModelVerified()) return null
   const now = Math.round(Date.now() / 1000)
   return {
     peer_id: 'local-ollama',

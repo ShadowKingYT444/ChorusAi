@@ -231,6 +231,7 @@ export const ORCHESTRATOR_BASE_SESSION_KEY = 'chorus_orchestrator_override'
 export const ORCHESTRATOR_BASE_LOCAL_KEY = 'chorus_orchestrator_base'
 export const MODEL_PUBLIC_URL_KEY = 'chorus_model_public_url'
 export const MODEL_NAME_KEY = 'chorus_model_name'
+export const MODEL_SETUP_VERIFIED_KEY = 'chorus_model_setup_verified'
 
 function normalizeOrchestratorBase(url: string): string {
   return url.trim().replace(/\/+$/, '')
@@ -392,6 +393,17 @@ export function getSavedModelPublicUrl(): string {
 export function getSavedModelName(): string {
   if (typeof window === 'undefined') return ''
   return localStorage.getItem(MODEL_NAME_KEY)?.trim() ?? ''
+}
+
+export function isSavedModelVerified(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem(MODEL_SETUP_VERIFIED_KEY) === '1'
+}
+
+export function setSavedModelVerified(verified: boolean): void {
+  if (typeof window === 'undefined') return
+  if (verified) localStorage.setItem(MODEL_SETUP_VERIFIED_KEY, '1')
+  else localStorage.removeItem(MODEL_SETUP_VERIFIED_KEY)
 }
 
 export async function getPeers(): Promise<PeersResponse> {

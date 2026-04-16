@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
 
   const rec = body as Record<string, unknown>
   const targetBase = typeof rec.targetBase === 'string' ? rec.targetBase : ''
+  const allowLoopback = rec.allowLoopback === true
   if (!targetBase.trim()) {
     return NextResponse.json({ error: 'Missing targetBase.' }, { status: 400 })
   }
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Could not parse target URL.' }, { status: 400 })
   }
 
-  if (!isAllowedChatProxyTarget(host)) {
+  if (!(allowLoopback && (host === '127.0.0.1' || host === 'localhost' || host === '::1')) && !isAllowedChatProxyTarget(host)) {
     return NextResponse.json(
       {
         error:
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { targetBase: _t, ...openaiBody } = rec
+  const { targetBase: _t, allowLoopback: _a, ...openaiBody } = rec
   if (!openaiBody || typeof openaiBody !== 'object') {
     return NextResponse.json({ error: 'Invalid OpenAI body.' }, { status: 400 })
   }

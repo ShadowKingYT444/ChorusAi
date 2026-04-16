@@ -2,8 +2,9 @@
 
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { isPrivateLanIpv4 } from '@/lib/lan/chat-proxy-allow'
+import { isLoopbackOllamaHost, isPrivateLanIpv4 } from '@/lib/lan/chat-proxy-allow'
 import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
+import { setSavedModelVerified } from '@/lib/api/orchestrator'
 
 export type TestMode = 'lan' | 'tunnel'
 export type TestPhase = 'idle' | 'running' | 'ok' | 'error'
@@ -43,6 +44,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
     setPhase('running')
     setMessage('')
     setTip('')
+    setSavedModelVerified(false)
 
     const trimmed = target.trim()
     if (!trimmed) {
@@ -65,23 +67,27 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       if (mode === 'lan') {
         const hostForBase = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}:11434`
         let host: string
+        let completionUrl: string
         try {
           host = new URL(hostForBase).hostname
+          completionUrl = normalizeOpenAIChatCompletionsUrl(hostForBase)
         } catch {
           setPhase('error')
           setMessage('Invalid LAN address.')
           onResult?.(false)
           return
         }
-        if (!isPrivateLanIpv4(host)) {
+        const isLoopback = isLoopbackOllamaHost(host)
+        const isLan = isPrivateLanIpv4(host)
+        if (!isLoopback && !isLan) {
           setTip(
-            'Warning: this does not look like a private LAN IPv4 (10.x, 172.16–31.x, 192.168.x). The Next proxy will refuse it — use your LAN IP from `ipconfig` / `hostname -I`.',
+            'Use `127.0.0.1` if Ollama is on this same PC. Use `192.168.x.x` only if Ollama is on a different machine on your Wi-Fi/LAN.',
           )
         }
         const res = await fetch('/api/local-chat-completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetBase: hostForBase, ...body }),
+          body: JSON.stringify({ targetBase: hostForBase, allowLoopback: isLoopback, ...body }),
         })
         const raw = await res.text()
         if (!res.ok) {
@@ -89,7 +95,21 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
           setMessage(`HTTP ${res.status}: ${extractErrorMessage(raw)}`)
           if (res.status === 502) {
             setTip(
-              'The Next server could not reach Ollama. Check OLLAMA_HOST=0.0.0.0, that Ollama is running, and that the firewall allows port 11434.',
+              isLoopback
+                ? [
+                    'You chose the same PC path, so this should work without ngrok.',
+                    '1. Make sure Ollama is open on this computer.',
+                    '2. In PowerShell run: `Invoke-WebRequest http://127.0.0.1:11434/api/tags`.',
+                    '3. If that fails, Ollama is not running yet. Start it and retry.',
+                    '4. If it works, retry this test.',
+                  ].join(' ')
+                : [
+                    `The Next server could not open ${completionUrl}.`,
+                    '1. On the Ollama machine, run: `Invoke-WebRequest http://127.0.0.1:11434/api/tags`.',
+                    '2. If that works, expose Ollama to your LAN with `OLLAMA_HOST=0.0.0.0`, then fully quit and relaunch Ollama.',
+                    '3. On the machine running `npm run dev`, run: `Invoke-WebRequest http://YOUR-IP:11434/api/tags`.',
+                    '4. If that times out, fix Windows Firewall for TCP 11434 or use `127.0.0.1` if Chorus and Ollama are on the same PC.',
+                  ].join(' '),
             )
           }
           onResult?.(false)
@@ -99,6 +119,12 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         const text = parsed.choices?.[0]?.message?.content?.trim() ?? '(empty)'
         setPhase('ok')
         setMessage(text)
+        setSavedModelVerified(true)
+        setTip(
+          isLoopback
+            ? 'Confirmed: Chorus can reach Ollama on this same computer.'
+            : 'Confirmed: the machine running Chorus can reach your Ollama node over the network.',
+        )
         onResult?.(true)
         return
       }
@@ -136,6 +162,8 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       const text = parsed.choices?.[0]?.message?.content?.trim() ?? '(empty)'
       setPhase('ok')
       setMessage(text)
+      setSavedModelVerified(true)
+      setTip('Confirmed: your public tunnel URL is alive and Ollama accepted the request.')
       onResult?.(true)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -149,6 +177,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
             : 'The Next server could not reach Ollama. Check OLLAMA_HOST=0.0.0.0 and firewall for port 11434.',
         )
       }
+      setSavedModelVerified(false)
       onResult?.(false)
     }
   }, [mode, target, model, onResult])
