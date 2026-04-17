@@ -268,7 +268,7 @@ export default function SetupPage() {
       note: TRAY_WARNING,
     },
     windows: {
-      code: '# In PowerShell. The tray Ollama often misses env vars set after login,\n# so kill it and run `ollama serve` directly:\nGet-Process ollama* -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should show: "OLLAMA_HOST: 0.0.0.0"',
+      code: '# In PowerShell. Kill ALL Ollama processes (tray + runners), then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should show: "OLLAMA_HOST: 0.0.0.0"',
       note: TRAY_WARNING,
     },
     linux: {
@@ -283,7 +283,7 @@ export default function SetupPage() {
       note: TRAY_WARNING,
     },
     windows: {
-      code: `# In PowerShell. The tray Ollama often ignores env vars set after login,\n# so kill it and run \`ollama serve\` directly with the env var inline:\nGet-Process ollama* -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should print: "OLLAMA_ORIGINS: ${origin}"\n#\n# (Optional) Also persist for future shells:\n# [System.Environment]::SetEnvironmentVariable('OLLAMA_ORIGINS','${origin}','User')`,
+      code: `# In PowerShell. Kill ALL Ollama processes (tray + runners), then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should print: "OLLAMA_ORIGINS: ${origin}"`,
       note: TRAY_WARNING,
     },
     linux: {
