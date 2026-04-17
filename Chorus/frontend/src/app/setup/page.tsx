@@ -32,6 +32,7 @@ import {
   setSavedModelVerified,
   setOrchestratorBaseOverride,
 } from '@/lib/api/orchestrator'
+import { isDemoMode, demoSleep } from '@/lib/runtime/demo-mode'
 
 type PathMode = 'local' | 'tunnel'
 type TunnelProvider = 'ngrok' | 'cloudflared'
@@ -179,6 +180,16 @@ export default function SetupPage() {
   }, [orchestratorBase])
 
   const probeOrchestrator = useCallback(async (): Promise<boolean> => {
+    // Demo mode: always pass after a short delay, even if no URL is set.
+    if (isDemoMode()) {
+      setProbePhase('probing')
+      setProbeMessage('')
+      await demoSleep(900)
+      setProbePhase('ok')
+      setProbeMessage('Orchestrator reachable.')
+      return true
+    }
+
     const v = orchestratorBase.trim()
     if (!v) {
       setProbePhase('error')

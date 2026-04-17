@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import type { NetworkStatus } from '@/hooks/use-network-status'
 import { getSavedOllamaIp, isOrchestratorConfigured } from '@/lib/api/orchestrator'
+import { isDemoMode } from '@/lib/runtime/demo-mode'
 
 const SUGGESTIONS: { icon: React.ReactNode; title: string; prompt: string }[] = [
   {
@@ -39,6 +40,10 @@ export function ChorusWelcome({ status, onPick }: Props) {
   const [needsSetup, setNeedsSetup] = useState<boolean>(false)
 
   useEffect(() => {
+    if (isDemoMode()) {
+      setNeedsSetup(false)
+      return
+    }
     setNeedsSetup(!isOrchestratorConfigured() && !getSavedOllamaIp())
   }, [])
 

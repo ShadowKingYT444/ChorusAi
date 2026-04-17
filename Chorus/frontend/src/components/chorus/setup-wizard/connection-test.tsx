@@ -8,6 +8,7 @@ import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-ch
 // Note: tunnel mode now routes through /api/local-chat-completions server-side
 // to avoid CORS issues and ngrok interstitial pages.
 import { setSavedModelVerified } from '@/lib/api/orchestrator'
+import { isDemoMode, demoProbeTarget, demoSleep } from '@/lib/runtime/demo-mode'
 
 export type TestMode = 'lan' | 'tunnel'
 export type TestPhase = 'idle' | 'running' | 'ok' | 'error'
@@ -54,6 +55,23 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       setPhase('error')
       setMessage('Enter a target first.')
       onResult?.(false)
+      return
+    }
+
+    // Demo mode: fire a real request at the user's URL so their logs show a hit,
+    // then resolve as success after a short pause. Skips orchestrator/proxy path.
+    if (isDemoMode()) {
+      demoProbeTarget(trimmed)
+      await demoSleep(2000)
+      setPhase('ok')
+      setMessage('OK')
+      setSavedModelVerified(true)
+      setTip(
+        mode === 'tunnel'
+          ? 'Tunnel reachable · Ollama accepted the probe.'
+          : 'Ollama reachable · model ready.',
+      )
+      onResult?.(true)
       return
     }
 

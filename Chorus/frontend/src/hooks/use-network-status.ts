@@ -9,6 +9,7 @@ import {
   isOrchestratorConfigured,
   type PeerEntry,
 } from '@/lib/api/orchestrator'
+import { isDemoMode, demoPeers } from '@/lib/runtime/demo-mode'
 
 export interface NetworkStatus {
   online: number
@@ -50,11 +51,19 @@ export function useNetworkStatus(pollMs = 4000): NetworkStatus {
   const [peers, setPeers] = useState<PeerEntry[]>([])
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [mode, setMode] = useState<'live' | 'offline' | 'unconfigured'>(
-    isOrchestratorConfigured() ? 'offline' : 'unconfigured',
+    isDemoMode() ? 'live' : isOrchestratorConfigured() ? 'offline' : 'unconfigured',
   )
   const mounted = useRef(false)
 
   const refresh = useCallback(async () => {
+    // Demo mode: always show 3 synthetic peers + local peer if verified.
+    if (isDemoMode()) {
+      setPeers(mergePeers(demoPeers()))
+      setMode('live')
+      setLastUpdated(Date.now())
+      return
+    }
+
     if (!isOrchestratorConfigured()) {
       setPeers([])
       setMode('unconfigured')
