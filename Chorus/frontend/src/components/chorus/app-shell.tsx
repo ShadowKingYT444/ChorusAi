@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChorusSidebar } from './sidebar'
 import { ChorusTopBar } from './top-bar'
@@ -15,8 +15,10 @@ import {
   type PeerEntry,
 } from '@/lib/api/orchestrator'
 import { writeSimulationSession } from '@/lib/runtime/session'
-import { getChat } from '@/lib/runtime/chat-history'
+import { getChat, upsertChat } from '@/lib/runtime/chat-history'
 import { isDemoMode, demoDebate, demoSleep } from '@/lib/runtime/demo-mode'
+
+const ACTIVE_CHAT_KEY = 'chorus_active_chat_id'
 
 const DEFAULT_JOB_CONTEXT =
   'You are participating in a distributed Chorus debate. Answer directly, add concrete reasoning, and adapt when peer context appears in later rounds.'
@@ -120,12 +122,72 @@ export function ChorusAppShell() {
   const maxVoices = Math.max(status.online, AUTO_FILL_MAX_VOICES)
   const clampedVoices = Math.min(Math.max(1, voices), maxVoices)
 
+  // Track first-mount restore so the auto-save effect doesn't wipe
+  // an existing chat with an empty turns array before hydration.
+  const hydratedRef = useRef(false)
+  const chatCreatedAtRef = useRef<number | null>(null)
+
+  // Restore last active chat from localStorage on mount.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const savedId = window.localStorage.getItem(ACTIVE_CHAT_KEY)
+      if (savedId) {
+        const rec = getChat(savedId)
+        if (rec) {
+          setActiveChatId(rec.id)
+          setTurns(rec.turns)
+          setTitle(rec.title)
+          setVoices(Math.max(1, rec.voices))
+          chatCreatedAtRef.current = rec.createdAt
+        }
+      }
+    } catch {
+      /* noop */
+    }
+    hydratedRef.current = true
+  }, [])
+
+  // Auto-save turns on every change. Creates a chat id lazily on first turn.
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    if (turns.length === 0) return
+    const id = activeChatId ?? `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    if (!activeChatId) {
+      setActiveChatId(id)
+      chatCreatedAtRef.current = Date.now()
+    }
+    const createdAt = chatCreatedAtRef.current ?? Date.now()
+    const firstUser = turns.find((t) => t.role === 'user')
+    const derivedTitle =
+      title !== 'New conversation' ? title : firstUser?.text?.slice(0, 48) ?? 'New conversation'
+    upsertChat({
+      id,
+      title: derivedTitle,
+      turns,
+      createdAt,
+      updatedAt: Date.now(),
+      voices,
+    })
+    try {
+      window.localStorage.setItem(ACTIVE_CHAT_KEY, id)
+    } catch {
+      /* noop */
+    }
+  }, [turns, activeChatId, title, voices])
+
   const newChat = useCallback(() => {
     setActiveChatId(null)
     setTurns([])
     setDraft('')
     setTitle('New conversation')
     setError(null)
+    chatCreatedAtRef.current = null
+    try {
+      window.localStorage.removeItem(ACTIVE_CHAT_KEY)
+    } catch {
+      /* noop */
+    }
   }, [])
 
   const selectChat = useCallback((id: string) => {
@@ -137,6 +199,12 @@ export function ChorusAppShell() {
     setVoices(Math.max(1, rec.voices))
     setDraft('')
     setError(null)
+    chatCreatedAtRef.current = rec.createdAt
+    try {
+      window.localStorage.setItem(ACTIVE_CHAT_KEY, rec.id)
+    } catch {
+      /* noop */
+    }
   }, [])
 
   const send = useCallback(async () => {
