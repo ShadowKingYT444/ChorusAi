@@ -64,7 +64,12 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       temperature: 0,
     }
 
-    const uiIsHttps = typeof window !== 'undefined' && window.location.protocol === 'https:'
+    // Detect whether we're on a deployed host (Vercel, etc.) vs localhost dev.
+    const isDeployed =
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1' &&
+      window.location.hostname !== ''
 
     try {
       if (mode === 'lan') {
@@ -82,6 +87,26 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         }
         const isLoopback = isLoopbackOllamaHost(host)
         const isLan = isPrivateLanIpv4(host)
+
+        // Block loopback/LAN on deployed hosts — the proxy runs on Vercel, not the user's PC.
+        if (isDeployed && (isLoopback || isLan)) {
+          setPhase('error')
+          setMessage(
+            isLoopback
+              ? 'Cannot reach 127.0.0.1 from a hosted site.'
+              : `Cannot reach ${host} (a private LAN address) from a hosted site.`,
+          )
+          setTip(
+            [
+              'You are on a deployed Chorus instance — the connection test runs on a remote server that cannot reach your local machine.',
+              'To connect your local Ollama, go back and select "Remote access via tunnel", then use ngrok or cloudflared to give Ollama a public URL.',
+              'Run: ngrok http 11434 — then paste the https URL it gives you.',
+            ].join(' '),
+          )
+          onResult?.(false)
+          return
+        }
+
         if (!isLoopback && !isLan) {
           setTip(
             'Use `127.0.0.1` if Ollama is on this same PC. Use `192.168.x.x` only if Ollama is on a different machine on your Wi-Fi/LAN.',

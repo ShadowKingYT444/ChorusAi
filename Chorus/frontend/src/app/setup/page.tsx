@@ -299,41 +299,66 @@ export default function SetupPage() {
         title="Pick your path"
         subtitle="Choose how Chorus connects to your Ollama instance. Use the local path if Ollama is on the same machine or LAN. Use a tunnel if you need remote access."
       >
-        <div
-          style={{
-            padding: '0.8rem 0.95rem',
-            borderRadius: 6,
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(255,255,255,0.025)',
-            fontSize: 12.5,
-            color: 'rgba(255,255,255,0.72)',
-            lineHeight: 1.6,
-            marginBottom: '0.85rem',
-          }}
-        >
-          <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginBottom: 6 }}>
-            Quickest setup
+        {isDeployedHost() ? (
+          <div
+            style={{
+              padding: '0.8rem 0.95rem',
+              borderRadius: 6,
+              border: '1px solid rgba(255,200,120,0.3)',
+              background: 'rgba(60,45,20,0.35)',
+              fontSize: 12.5,
+              color: 'rgba(255,230,180,0.88)',
+              lineHeight: 1.6,
+              marginBottom: '0.85rem',
+            }}
+          >
+            <div style={{ fontWeight: 600, color: 'rgba(255,240,200,0.95)', marginBottom: 6 }}>
+              You are on a hosted Chorus instance
+            </div>
+            <div>
+              Since this site runs on a remote server, it cannot reach <code>127.0.0.1</code> or <code>192.168.x.x</code> on your computer.
+              You need a <strong>tunnel</strong> (ngrok or cloudflared) to give your local Ollama a public URL.
+            </div>
           </div>
-          <div>1. Run Ollama on the same machine as your browser.</div>
-          <div>2. In the test step, enter <code>127.0.0.1</code>.</div>
-          <div>3. You do not need ngrok for that path.</div>
-        </div>
+        ) : (
+          <div
+            style={{
+              padding: '0.8rem 0.95rem',
+              borderRadius: 6,
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.025)',
+              fontSize: 12.5,
+              color: 'rgba(255,255,255,0.72)',
+              lineHeight: 1.6,
+              marginBottom: '0.85rem',
+            }}
+          >
+            <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginBottom: 6 }}>
+              Quickest setup
+            </div>
+            <div>1. Run Ollama on the same machine as your browser.</div>
+            <div>2. In the test step, enter <code>127.0.0.1</code>.</div>
+            <div>3. You do not need ngrok for that path.</div>
+          </div>
+        )}
         <div style={{ display: 'grid', gap: '0.7rem' }}>
+          {!isDeployedHost() && (
+            <PathCard
+              selected={mode === 'local'}
+              onClick={() => setMode('local')}
+              icon={<Home size={16} />}
+              title="Same machine or LAN"
+              description="Ollama is on this machine (use 127.0.0.1) or another device on your local network (use its 192.168.x.x address)."
+              hint="Default — detected localhost."
+            />
+          )}
           <PathCard
-            selected={mode === 'local'}
-            onClick={() => setMode('local')}
-            icon={<Home size={16} />}
-            title="Same machine or LAN"
-            description="Ollama is on this machine (use 127.0.0.1) or another device on your local network (use its 192.168.x.x address)."
-            hint={isDeployedHost() ? undefined : 'Default — detected localhost.'}
-          />
-          <PathCard
-            selected={mode === 'tunnel'}
+            selected={mode === 'tunnel' || isDeployedHost()}
             onClick={() => setMode('tunnel')}
             icon={<Cloud size={16} />}
             title="Remote access via tunnel"
             description="Expose your local Ollama to the internet with ngrok or cloudflared so Chorus can reach it from anywhere."
-            hint={isDeployedHost() ? 'Recommended — you are on a hosted instance.' : undefined}
+            hint={isDeployedHost() ? 'Required — you are on a hosted instance.' : undefined}
           />
         </div>
       </StepShell>
