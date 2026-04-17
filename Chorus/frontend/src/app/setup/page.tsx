@@ -297,7 +297,7 @@ export default function SetupPage() {
         icon={<Laptop size={18} />}
         eyebrow={`Step 1 of ${totalSteps}`}
         title="Pick your path"
-        subtitle="First decide where Ollama is running. If Chorus and Ollama are on the same computer, use the local path and `127.0.0.1`. Only use a LAN IP if Ollama is on a different machine. Only use ngrok/cloudflared if you are opening a deployed Chorus site over the internet."
+        subtitle="Choose how Chorus connects to your Ollama instance. Use the local path if Ollama is on the same machine or LAN. Use a tunnel if you need remote access."
       >
         <div
           style={{
@@ -312,9 +312,9 @@ export default function SetupPage() {
           }}
         >
           <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginBottom: 6 }}>
-            The simplest demo setup
+            Quickest setup
           </div>
-          <div>1. Run Ollama on the same laptop as Chorus.</div>
+          <div>1. Run Ollama on the same machine as your browser.</div>
           <div>2. In the test step, enter <code>127.0.0.1</code>.</div>
           <div>3. You do not need ngrok for that path.</div>
         </div>
@@ -323,17 +323,17 @@ export default function SetupPage() {
             selected={mode === 'local'}
             onClick={() => setMode('local')}
             icon={<Home size={16} />}
-            title="Run locally (dev mode)"
-            description="Best option for a demo. If Ollama is on this same machine, use `127.0.0.1`. If Ollama is on another machine on your Wi-Fi, use its `192.168.x.x` address so this Next.js server can reach it."
-            hint={isDeployedHost() ? undefined : 'Default — you seem to be running on localhost.'}
+            title="Same machine or LAN"
+            description="Ollama is on this machine (use 127.0.0.1) or another device on your local network (use its 192.168.x.x address)."
+            hint={isDeployedHost() ? undefined : 'Default — detected localhost.'}
           />
           <PathCard
             selected={mode === 'tunnel'}
             onClick={() => setMode('tunnel')}
             icon={<Cloud size={16} />}
-            title="Deploy & join the public network"
-            description="Use this only if Chorus is running on a deployed site. `ngrok` or `cloudflared` gives your local Ollama a temporary public https URL."
-            hint={isDeployedHost() ? 'Recommended — you are on a deployed instance.' : undefined}
+            title="Remote access via tunnel"
+            description="Expose your local Ollama to the internet with ngrok or cloudflared so Chorus can reach it from anywhere."
+            hint={isDeployedHost() ? 'Recommended — you are on a hosted instance.' : undefined}
           />
         </div>
       </StepShell>

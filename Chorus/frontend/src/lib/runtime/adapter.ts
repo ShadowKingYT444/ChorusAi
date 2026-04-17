@@ -63,8 +63,8 @@ function cleanPredictionText(text: string): string {
   return s
 }
 
-// ─── GPT-4o API equivalent cost per agent-round ───────────────────────────────
-// ~500 input tokens + ~200 output tokens at GPT-4o pricing ($2.50/1M in, $10/1M out)
+// ─── Cloud API equivalent cost per agent-round ───────────────────────────────
+// ~500 input tokens + ~200 output tokens at typical cloud pricing ($2.50/1M in, $10/1M out)
 // = $0.00125 + $0.002 = ~$0.004 per call
 const CLOUD_COST_PER_AGENT_ROUND = 0.004
 

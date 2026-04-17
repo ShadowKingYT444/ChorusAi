@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { isAllowedChatProxyTarget } from '@/lib/lan/chat-proxy-allow'
+import { isAllowedChatProxyTarget, isTunnelHostname } from '@/lib/lan/chat-proxy-allow'
 import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
 
 export const runtime = 'nodejs'
@@ -93,16 +93,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid OpenAI body.' }, { status: 400 })
   }
 
+  // Build headers — add ngrok bypass header for tunnel URLs.
+  const upstreamHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (isTunnelHostname(host)) {
+    upstreamHeaders['ngrok-skip-browser-warning'] = 'true'
+  }
+
   try {
     const upstream = await fetch(completionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: upstreamHeaders,
       body: JSON.stringify(openaiBody),
     })
+    const contentType = upstream.headers.get('Content-Type') ?? 'application/json'
     const text = await upstream.text()
+    // Detect ngrok interstitial HTML returned instead of JSON.
+    if (contentType.includes('text/html') && text.includes('ngrok')) {
+      return NextResponse.json(
+        { error: 'ngrok returned its browser warning page instead of proxying to Ollama. Make sure Ollama is running and the ngrok tunnel is forwarding to port 11434.' },
+        { status: 502 },
+      )
+    }
     return new NextResponse(text, {
       status: upstream.status,
-      headers: { 'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json' },
+      headers: { 'Content-Type': contentType },
     })
   } catch (e) {
     return NextResponse.json({ error: upstreamConnectFailureMessage(e, completionUrl) }, { status: 502 })

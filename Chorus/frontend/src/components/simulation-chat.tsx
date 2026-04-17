@@ -473,7 +473,7 @@ export function SimulationChat() {
           </motion.span>
           <div className="flex flex-col gap-1.5 opacity-90">
             <span className="font-sans text-[9px] text-white/75 leading-relaxed flex justify-between">
-              <span>via GPT-4o API</span>
+              <span>via cloud API (GPT-4o)</span>
               <span className="font-mono">${gpt4oCost}</span>
             </span>
             <span className="font-sans text-[9px] text-white/75 leading-relaxed flex justify-between">

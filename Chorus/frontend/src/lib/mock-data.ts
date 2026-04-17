@@ -26,23 +26,23 @@ export const CHART_DATA: { month: string; toolCalls: number; blocked: number; la
 export interface AgentInfo {
   role: string
   strategy: string
-  connectionReason: string   // why this agent exists / its purpose
+  connectionReason: string
 }
 
-const C1_ROLES = ['Market Analyst', 'Momentum Trader', 'Liquidity Specialist', 'Options Strategist', 'Spot Trader', 'Sentiment Tracker', 'Flow Analyst', 'Breakout Trader', 'Volume Watcher', 'Trend Follower', 'Bull Sentinel', 'DeFi Observer', 'Whale Tracker', 'Onchain Analyst', 'Funding Scout', 'Exchange Monitor', 'Inflow Tracker', 'Stablecoin Watcher', 'Rally Scout']
-const C2_ROLES = ['Risk Assessor', 'Macro Economist', 'Short Seller', 'Fundamentalist', 'Quant Analyst', 'OTC Desk Agent', 'Outflow Monitor', 'Institutional Scout', 'Bear Sentinel', 'Correction Analyst', 'Liquidity Trap Watcher', 'Leverage Auditor', 'Downside Modeler', 'Hedger']
-const C3_ROLES = ['Neutral Observer', 'Arbitrageur', 'Data Scientist', 'Technical Analyst', 'Portfolio Manager', 'Macro Watcher', 'PCE Monitor', 'Volatility Tracker', 'Cross-Asset Scout', 'Regime Detector', 'Event Monitor']
-const C4_ROLES = ['Volatility Trader', 'Black Swan Hunter', 'Derivatives Specialist', 'Liquidation Scout', 'Flash Crash Modeler', 'Contagion Tracker']
+const C1_ROLES = ['Lead Analyst', 'Systems Architect', 'Research Synthesizer', 'Evidence Reviewer', 'Methodology Expert', 'Data Interpreter', 'Hypothesis Builder', 'Precision Auditor', 'Scope Specialist', 'Assumption Challenger', 'Pattern Recognizer', 'Integration Analyst', 'Depth Researcher', 'Context Mapper', 'Risk Evaluator', 'Priority Ranker', 'Solution Architect', 'Baseline Analyst', 'Verification Lead']
+const C2_ROLES = ['Critical Reviewer', 'Devil\'s Advocate', 'Counter-Analyst', 'Limitation Finder', 'Bias Detector', 'Edge Case Hunter', 'Stress Tester', 'Regression Analyst', 'Assumption Auditor', 'Failure Mode Analyst', 'Gap Identifier', 'Quality Assessor', 'Risk Modeler', 'Scenario Planner']
+const C3_ROLES = ['Neutral Observer', 'Meta-Analyst', 'Data Scientist', 'Cross-Domain Expert', 'Framework Builder', 'Synthesis Lead', 'Calibration Analyst', 'Uncertainty Modeler', 'Evidence Weigher', 'Consensus Tracker', 'Methodology Reviewer']
+const C4_ROLES = ['Outlier Detector', 'Uncertainty Specialist', 'Tail-Risk Analyst', 'Edge Scenario Planner', 'Anomaly Hunter', 'Black Swan Analyst']
 
-const C1_STRATEGY = 'Bullish positioning — monitoring inflow data and options skew for confirmation signals'
-const C2_STRATEGY = 'Bearish positioning — tracking institutional outflows and macro headwinds for reversal confirmation'
-const C3_STRATEGY = 'Macro-neutral — withholding directional commitment pending PCE data at 08:30 UTC'
-const C4_STRATEGY = 'Volatility exploitation — watching leverage ratios and derivatives funding rates for cascade triggers'
+const C1_STRATEGY = 'Building constructive thesis — assembling supporting evidence and primary analysis to form initial conclusions'
+const C2_STRATEGY = 'Adversarial review — identifying weaknesses, gaps, and counter-arguments to stress-test the primary analysis'
+const C3_STRATEGY = 'Neutral synthesis — withholding directional commitment until all evidence streams are weighed'
+const C4_STRATEGY = 'Uncertainty mapping — monitoring edge cases, tail risks, and scenarios others may underweight'
 
-const C1_WHY = 'Propagating bullish thesis within Cluster 1 — aggregating inflow signals and liquidity metrics to build consensus'
-const C2_WHY = 'Anchoring bearish thesis in Cluster 2 — correlating OTC spread widening with institutional risk-off signals'
-const C3_WHY = 'Maintaining neutral stance in Cluster 3 — acting as macro arbiter between opposing clusters'
-const C4_WHY = 'Monitoring tail-risk indicators in Cluster 4 — isolated from consensus to preserve independent volatility assessment'
+const C1_WHY = 'Driving the initial analysis forward — aggregating signals and evidence to build a coherent thesis'
+const C2_WHY = 'Stress-testing the primary thesis — correlating counter-evidence to ensure robustness'
+const C3_WHY = 'Maintaining neutral stance — acting as an impartial arbiter between competing perspectives'
+const C4_WHY = 'Monitoring low-probability high-impact scenarios — preserving independent assessment of tail risks'
 
 function makeAgentInfo(idx: number, clusterId: ClusterID): AgentInfo {
   if (clusterId === 1) return { role: C1_ROLES[idx % C1_ROLES.length], strategy: C1_STRATEGY, connectionReason: C1_WHY }
@@ -60,8 +60,8 @@ export interface SimulationJob {
   bounty: number
 }
 
-export const DEMO_JOB: SimulationJob = {
-  prompt: 'Simulate 50 traders in a volatile crypto market. Predict where Bitcoin goes in 24 hours.',
+export const SAMPLE_JOB: SimulationJob = {
+  prompt: 'Analyze the pros and cons of migrating our monolith to microservices. Consider team size, current technical debt, and a 6-month timeline.',
   agentCount: 50,
   rounds: 3,
   bounty: 0.10,
@@ -88,7 +88,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.88)',
     colorDim: 'rgba(255,255,255,0.40)',
     agentCount: 19,
-    stance: 'Bullish — liquidity surge incoming',
+    stance: 'Supportive — strong case for migration with phased approach',
     confidence: 71,
   },
   {
@@ -97,7 +97,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.65)',
     colorDim: 'rgba(255,255,255,0.28)',
     agentCount: 14,
-    stance: 'Bearish — institutional sell pressure building',
+    stance: 'Cautious — risks outweigh benefits given current constraints',
     confidence: 63,
   },
   {
@@ -106,7 +106,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.45)',
     colorDim: 'rgba(255,255,255,0.18)',
     agentCount: 11,
-    stance: 'Neutral — waiting on macro data',
+    stance: 'Neutral — insufficient data to commit to a direction',
     confidence: 58,
   },
   {
@@ -115,7 +115,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.30)',
     colorDim: 'rgba(255,255,255,0.12)',
     agentCount: 6,
-    stance: 'Volatile — flash crash risk elevated',
+    stance: 'Risk-focused — underestimated failure modes need attention',
     confidence: 44,
   },
 ]
@@ -231,7 +231,7 @@ export const AGENT_EDGES: LegacyFlowEdge[] = [
   { id: 'e-a46-a48', source: 'a46', target: 'a48', animated: false },
   { id: 'e-a47-a49', source: 'a47', target: 'a49', animated: true },
   { id: 'e-a50-a45', source: 'a50', target: 'a45', animated: false },
-  // Inter-cluster bridges (sparse — show cross-debate)
+  // Inter-cluster bridges (sparse — show cross-perspective debate)
   { id: 'e-a12-a31', source: 'a12', target: 'a31', animated: false },
   { id: 'e-a16-a20', source: 'a16', target: 'a20', animated: false },
   { id: 'e-a19-a34', source: 'a19', target: 'a34', animated: false },
@@ -257,27 +257,27 @@ export interface AgentMessage {
 }
 
 export const AGENT_MESSAGES: AgentMessage[] = [
-  { id: 1,  agentId: 'a09', clusterId: 1, type: 'propose',  text: 'Liquidity metrics on major exchanges are trending upward. I project a 12% rise in the next 24 hours.',                round: 1, timestamp: '0:04' },
-  { id: 2,  agentId: 'a31', clusterId: 2, type: 'critique', text: 'Disagree — whale wallet outflows on Binance exceed $340M in the last 6 hours. Bearish signal.',                      round: 1, timestamp: '0:07', replyTo: 'a09' },
-  { id: 3,  agentId: 'a12', clusterId: 1, type: 'agree',    text: 'Confirming a09\'s liquidity read. Stablecoin inflows to spot markets are at a 3-month high.',                       round: 1, timestamp: '0:11' },
-  { id: 4,  agentId: 'a40', clusterId: 3, type: 'propose',  text: 'Holding neutral. PCE data drops tomorrow — macro uncertainty is too high to call direction.',                        round: 1, timestamp: '0:14' },
-  { id: 5,  agentId: 'a47', clusterId: 4, type: 'propose',  text: 'Derivatives funding rates are flipping negative. Flash crash probability: elevated.',                               round: 1, timestamp: '0:18' },
-  { id: 6,  agentId: 'a22', clusterId: 2, type: 'agree',    text: 'Confirming a31. OTC desk spread widening — institutional risk-off positioning.',                                    round: 1, timestamp: '0:21', replyTo: 'a31' },
-  { id: 7,  agentId: 'a16', clusterId: 1, type: 'critique', text: 'a47\'s funding rate signal is lagging. Options skew shifted bullish in last 2 hours.',                              round: 1, timestamp: '0:25', replyTo: 'a47' },
-  { id: 8,  agentId: 'a36', clusterId: 3, type: 'agree',    text: 'Neutral position holds. Waiting for CPI revised estimates before updating model.',                                  round: 1, timestamp: '0:29' },
-  { id: 9,  agentId: 'a03', clusterId: 1, type: 'cluster',  text: 'Cluster 1 forming consensus — bullish thesis converging around liquidity and options data.',                        round: 2, timestamp: '0:34' },
-  { id: 10, agentId: 'a31', clusterId: 2, type: 'critique', text: 'Cluster 1 is overweighting short-term metrics. Historical pattern: 7 of last 9 liquidity surges reversed within 48h.', round: 2, timestamp: '0:38' },
-  { id: 11, agentId: 'a09', clusterId: 1, type: 'critique', text: 'Historical base rates are not adjusted for current macro regime. The comparison set is flawed.',                    round: 2, timestamp: '0:42', replyTo: 'a31' },
-  { id: 12, agentId: 'a45', clusterId: 4, type: 'propose',  text: 'Cluster 2 disagrees with Cluster 1 — monitoring for capitulation event. Liquidation cascade threshold: $58,200.',  round: 2, timestamp: '0:46' },
-  { id: 13, agentId: 'a40', clusterId: 3, type: 'agree',    text: 'Cluster 3 remaining neutral. Arbitrage opportunity between clusters if spread widens further.',                     round: 2, timestamp: '0:51' },
-  { id: 14, agentId: 'a12', clusterId: 1, type: 'propose',  text: 'Spot buy volume accelerating on Coinbase. Retail FOMO signal weakening the bear case.',                            round: 2, timestamp: '0:55' },
-  { id: 15, agentId: 'a22', clusterId: 2, type: 'cluster',  text: 'Cluster 2 internal consensus reached — bearish with 63% confidence. Awaiting Cluster 1 final stance.',             round: 2, timestamp: '1:00' },
-  { id: 16, agentId: 'a47', clusterId: 4, type: 'critique', text: 'Both Cluster 1 and 2 are overconfident. Black swan risk is underpriced. Implied vol at 30-day low.',               round: 2, timestamp: '1:04' },
-  { id: 17, agentId: 'a16', clusterId: 1, type: 'agree',    text: 'Cluster 1 final position: bullish. Price target +8.3% within 24h. Confidence 71%.',                               round: 3, timestamp: '1:09' },
-  { id: 18, agentId: 'a31', clusterId: 2, type: 'critique', text: 'Cluster 1 ignores macro headwinds. Our model forecasts -6.1% correction. Confidence 63%.',                        round: 3, timestamp: '1:13', replyTo: 'a16' },
-  { id: 19, agentId: 'a47', clusterId: 4, type: 'propose',  text: 'Neither cluster accounts for leverage ratio at all-time high. Risk-adjusted return favors short.',                 round: 3, timestamp: '1:17' },
-  { id: 20, agentId: 'a40', clusterId: 3, type: 'agree',    text: 'Cluster 3 final: neutral. Will re-evaluate post PCE release at 08:30 UTC.',                                        round: 3, timestamp: '1:22' },
-  { id: 21, agentId: 'a09', clusterId: 1, type: 'cluster',  text: 'Simulation complete. Dominant consensus: Bullish bias with elevated volatility risk. Weighted confidence: 78%.',   round: 3, timestamp: '1:26' },
+  { id: 1,  agentId: 'a09', clusterId: 1, type: 'propose',  text: 'Service boundaries are well-defined in the current codebase. A phased migration starting with the auth module would limit risk while proving the pattern.',                round: 1, timestamp: '0:04' },
+  { id: 2,  agentId: 'a31', clusterId: 2, type: 'critique', text: 'Disagree — the team has 6 engineers. Operating a distributed system adds significant overhead that a small team cannot absorb.',                      round: 1, timestamp: '0:07', replyTo: 'a09' },
+  { id: 3,  agentId: 'a12', clusterId: 1, type: 'agree',    text: 'Supporting a09\'s phased approach. The existing API gateway already handles routing, reducing migration friction.',                       round: 1, timestamp: '0:11' },
+  { id: 4,  agentId: 'a40', clusterId: 3, type: 'propose',  text: 'Holding neutral. We lack production latency data under load — decisions should wait until the profiling sprint completes.',                        round: 1, timestamp: '0:14' },
+  { id: 5,  agentId: 'a47', clusterId: 4, type: 'propose',  text: 'Distributed tracing and observability gaps are underestimated. Incident response time could double without proper tooling.',                               round: 1, timestamp: '0:18' },
+  { id: 6,  agentId: 'a22', clusterId: 2, type: 'agree',    text: 'Confirming a31. The current CI/CD pipeline has no multi-service deployment support — that alone is a 2-month prerequisite.',                                    round: 1, timestamp: '0:21', replyTo: 'a31' },
+  { id: 7,  agentId: 'a16', clusterId: 1, type: 'critique', text: 'a47\'s tooling concern is valid but solvable. OpenTelemetry adoption is a weekend spike, not a blocker.',                              round: 1, timestamp: '0:25', replyTo: 'a47' },
+  { id: 8,  agentId: 'a36', clusterId: 3, type: 'agree',    text: 'Neutral position holds. Need to see the dependency graph analysis before committing to a migration sequence.',                                  round: 1, timestamp: '0:29' },
+  { id: 9,  agentId: 'a03', clusterId: 1, type: 'cluster',  text: 'Cluster 1 forming consensus — phased migration is viable with existing infrastructure as a foundation.',                        round: 2, timestamp: '0:34' },
+  { id: 10, agentId: 'a31', clusterId: 2, type: 'critique', text: 'Cluster 1 underestimates operational complexity. Historical data: 7 of 10 similar migrations at this team size exceeded timeline by 3x.', round: 2, timestamp: '0:38' },
+  { id: 11, agentId: 'a09', clusterId: 1, type: 'critique', text: 'Those comparisons lack context — most did not have an existing API gateway. Our starting position is materially different.',                    round: 2, timestamp: '0:42', replyTo: 'a31' },
+  { id: 12, agentId: 'a45', clusterId: 4, type: 'propose',  text: 'Cluster 2 raises valid concerns. Monitoring for scope creep: if the auth service extraction exceeds 4 weeks, the entire timeline fails.',  round: 2, timestamp: '0:46' },
+  { id: 13, agentId: 'a40', clusterId: 3, type: 'agree',    text: 'Cluster 3 remaining neutral. Recommend a time-boxed proof of concept before full commitment.',                     round: 2, timestamp: '0:51' },
+  { id: 14, agentId: 'a12', clusterId: 1, type: 'propose',  text: 'Developer velocity data shows 40% of PRs touch 3+ modules. Service isolation would reduce blast radius and review complexity.',                            round: 2, timestamp: '0:55' },
+  { id: 15, agentId: 'a22', clusterId: 2, type: 'cluster',  text: 'Cluster 2 internal consensus reached — migration is premature given current constraints. Confidence 63%.',             round: 2, timestamp: '1:00' },
+  { id: 16, agentId: 'a47', clusterId: 4, type: 'critique', text: 'Both clusters are overconfident. The unknown unknowns in data consistency across services are underpriced.',               round: 2, timestamp: '1:04' },
+  { id: 17, agentId: 'a16', clusterId: 1, type: 'agree',    text: 'Cluster 1 final position: proceed with phased migration. Start with auth, validate in 4 weeks. Confidence 71%.',                               round: 3, timestamp: '1:09' },
+  { id: 18, agentId: 'a31', clusterId: 2, type: 'critique', text: 'Cluster 1 underweights team capacity risk. Our recommendation: defer migration until headcount reaches 10. Confidence 63%.',                        round: 3, timestamp: '1:13', replyTo: 'a16' },
+  { id: 19, agentId: 'a47', clusterId: 4, type: 'propose',  text: 'Neither cluster accounts for the database coupling. Shared state across services requires an event-driven rewrite first.',                 round: 3, timestamp: '1:17' },
+  { id: 20, agentId: 'a40', clusterId: 3, type: 'agree',    text: 'Cluster 3 final: neutral. Recommend a 2-week spike to validate assumptions before deciding.',                                        round: 3, timestamp: '1:22' },
+  { id: 21, agentId: 'a09', clusterId: 1, type: 'cluster',  text: 'Analysis complete. Weighted consensus: phased migration is feasible with risk mitigation. Confidence: 68%.',   round: 3, timestamp: '1:26' },
 ]
 
 // ─── Simulation Results ───────────────────────────────────────────────────────
@@ -295,8 +295,8 @@ export interface SimulationResults {
 }
 
 export const SIMULATION_RESULTS: SimulationResults = {
-  finalPrediction: 'Bitcoin likely to rise 6–8% within 24 hours, driven by stablecoin inflows and options skew rotation — with elevated flash-crash risk if macro data disappoints.',
-  confidenceScore: 78,
+  finalPrediction: 'Phased microservices migration is viable starting with the auth module, contingent on a 2-week proof-of-concept and headcount growth to 10 within 6 months. Key risk: database coupling requires event-driven architecture first.',
+  confidenceScore: 68,
   costActual: 0.10,
   costCloud: 0.60,
   agentCount: 50,
@@ -309,15 +309,15 @@ export const SIMULATION_RESULTS: SimulationResults = {
 // ─── Prompt Chips ─────────────────────────────────────────────────────────────
 
 export const PROMPT_CHIPS: string[] = [
-  '50 traders in a volatile crypto market',
-  'City council negotiation over contested zoning',
-  '100 scientists competing to solve a protein folding problem',
-  'War game: two AI blocs negotiating a ceasefire',
+  'Should we migrate our monolith to microservices?',
+  'Debate the best approach to reduce API latency by 50%',
+  'Evaluate three competing database architectures for our use case',
+  'Design a disaster recovery plan for a multi-region deployment',
 ]
 
 // ─── Cost Comparison Chart ────────────────────────────────────────────────────
 
 export const COST_CHART_DATA = [
-  { label: 'GPT-4o', cost: 0.60 },
+  { label: 'Cloud API', cost: 0.60 },
   { label: 'Chorus', cost: 0.10 },
 ]

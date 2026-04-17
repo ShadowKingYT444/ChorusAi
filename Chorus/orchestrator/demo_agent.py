@@ -10,6 +10,7 @@ import anyio
 from orchestrator.models import CompletionResult, JobRecord
 
 DEMO_COMPLETION_SCHEME = "demo://"
+SYNTHETIC_COMPLETION_SCHEME = "synthetic://"
 
 _NEAREST_RE = re.compile(r"A peer said:\s*(.+?)(?:\n\n|$)", re.DOTALL)
 _FURTHEST_RE = re.compile(r"A dissenting peer said:\s*(.+?)(?:\n\n|$)", re.DOTALL)
@@ -87,7 +88,8 @@ _ROLE_STYLES = {
 
 
 def is_demo_completion_base(value: str) -> bool:
-    return value.strip().lower().startswith(DEMO_COMPLETION_SCHEME)
+    v = value.strip().lower()
+    return v.startswith(DEMO_COMPLETION_SCHEME) or v.startswith(SYNTHETIC_COMPLETION_SCHEME)
 
 
 def _stable_rng(*parts: object) -> random.Random:

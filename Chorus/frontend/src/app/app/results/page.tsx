@@ -619,7 +619,7 @@ function ResultsPageContent() {
                   transition={{ delay: 0.3, type: 'spring', stiffness: 180, damping: 28 }}
                   style={{ fontFamily: SANS, fontSize: 'clamp(0.9rem, 1.6vw, 1.1rem)', color: 'rgba(255,255,255,0.38)', margin: '0 0 0.5rem' }}
                 >
-                  GPT-4o API equivalent: ~${r.costCloud.toFixed(2)}
+                  Cloud API equivalent: ~${r.costCloud.toFixed(2)}
                 </motion.p>
 
                 <motion.p

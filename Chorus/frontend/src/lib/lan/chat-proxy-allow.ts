@@ -1,5 +1,13 @@
 const METADATA_HOST = '169.254.169.254'
 
+/** Known tunnel hostname patterns that are safe to proxy through. */
+const TUNNEL_HOSTNAME_PATTERNS = [
+  /\.ngrok-free\.app$/i,
+  /\.ngrok\.io$/i,
+  /\.ngrok\.app$/i,
+  /\.trycloudflare\.com$/i,
+]
+
 /** RFC1918 LAN (not 127.x — server-side proxy must not target loopback or it hits the wrong PC). */
 export function isPrivateLanIpv4(host: string): boolean {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
@@ -20,6 +28,12 @@ export function isLoopbackOllamaHost(hostname: string): boolean {
   return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]'
 }
 
+/** Returns true if the hostname belongs to a known tunnel provider (ngrok, cloudflared). */
+export function isTunnelHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase()
+  return TUNNEL_HOSTNAME_PATTERNS.some((re) => re.test(h))
+}
+
 export function parseServerExtraHosts(): Set<string> {
   const raw = process.env.NEXT_CHAT_PROXY_EXTRA_HOSTS?.trim() ?? ''
   if (!raw) return new Set()
@@ -37,5 +51,6 @@ export function isAllowedChatProxyTarget(hostname: string): boolean {
   if (!h || h === METADATA_HOST) return false
   if (isLoopbackOllamaHost(h)) return false
   if (isPrivateLanIpv4(h)) return true
+  if (isTunnelHostname(h)) return true
   return parseServerExtraHosts().has(h)
 }

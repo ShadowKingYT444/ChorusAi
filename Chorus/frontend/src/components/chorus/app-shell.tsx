@@ -19,7 +19,7 @@ import { getChat } from '@/lib/runtime/chat-history'
 
 const DEFAULT_JOB_CONTEXT =
   'You are participating in a distributed Chorus debate. Answer directly, add concrete reasoning, and adapt when peer context appears in later rounds.'
-const DEMO_FILL_MAX_VOICES = 8
+const AUTO_FILL_MAX_VOICES = 8
 const SYNTHETIC_MODEL_POOL = [
   'qwen2.5:0.5b',
   'llama3.2:1b',
@@ -28,12 +28,12 @@ const SYNTHETIC_MODEL_POOL = [
   'mistral-nemo',
 ]
 const SYNTHETIC_NAME_POOL = [
-  'skeptic',
-  'optimist',
   'analyst',
-  'contrarian',
-  'operator',
-  'planner',
+  'reviewer',
+  'strategist',
+  'challenger',
+  'synthesizer',
+  'architect',
   'researcher',
   'auditor',
 ]
@@ -55,14 +55,14 @@ function makeSyntheticParticipant(index: number): LaunchParticipant {
       status: 'idle',
       verified: false,
     },
-    completionBaseUrl: `demo://${peerId}`,
+    completionBaseUrl: `synthetic://${peerId}`,
   }
 }
 
 function buildLaunchParticipants(
   peers: PeerEntry[],
   requestedVoices: number,
-  demoAssist: boolean,
+  autoFill: boolean,
 ): {
   participants: LaunchParticipant[]
   liveCount: number
@@ -75,7 +75,7 @@ function buildLaunchParticipants(
       return a.peer_id.localeCompare(b.peer_id)
     })
 
-  const liveTarget = demoAssist
+  const liveTarget = autoFill
     ? Math.min(requestedVoices, Math.min(1, addressedPeers.length))
     : Math.min(requestedVoices, addressedPeers.length)
 
@@ -84,7 +84,7 @@ function buildLaunchParticipants(
     completionBaseUrl: peer.address?.trim() ?? '',
   }))
 
-  if (!demoAssist && live.length < requestedVoices) {
+  if (!autoFill && live.length < requestedVoices) {
     return {
       participants: live,
       liveCount: live.length,
@@ -116,7 +116,7 @@ export function ChorusAppShell() {
   const [error, setError] = useState<string | null>(null)
 
   const readyPeerCount = status.peers.filter((peer) => Boolean(peer.address?.trim())).length
-  const maxVoices = Math.max(status.online, DEMO_FILL_MAX_VOICES)
+  const maxVoices = Math.max(status.online, AUTO_FILL_MAX_VOICES)
   const clampedVoices = Math.min(Math.max(1, voices), maxVoices)
 
   const newChat = useCallback(() => {

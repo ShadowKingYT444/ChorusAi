@@ -133,7 +133,7 @@ export function useJobRuntime(jobIdFromRoute?: string | null): JobRuntimeState {
         effectiveSession?.mode === 'mock' ? configuredAgentOriginsFromEnv() : [],
       )
       setConnectedPeers([])
-      setEmbeddingModelVersion(effectiveSession?.mode === 'mock' ? 'Phase 1-2 demo (no aggregation yet)' : null)
+      setEmbeddingModelVersion(effectiveSession?.mode === 'mock' ? 'Local preview (no aggregation)' : null)
       return
     }
 

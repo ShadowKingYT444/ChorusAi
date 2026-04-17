@@ -4,6 +4,9 @@ import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { isLoopbackOllamaHost, isPrivateLanIpv4 } from '@/lib/lan/chat-proxy-allow'
 import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
+
+// Note: tunnel mode now routes through /api/local-chat-completions server-side
+// to avoid CORS issues and ngrok interstitial pages.
 import { setSavedModelVerified } from '@/lib/api/orchestrator'
 
 export type TestMode = 'lan' | 'tunnel'
@@ -129,38 +132,30 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         return
       }
 
-      // tunnel mode — direct browser fetch
-      const url = normalizeOpenAIChatCompletionsUrl(trimmed)
-      if (!url) {
-        setPhase('error')
-        setMessage('Invalid tunnel URL.')
-        onResult?.(false)
-        return
-      }
-      if (uiIsHttps && url.startsWith('http://')) {
-        setTip(
-          'Mixed-content warning: this page is HTTPS but your tunnel is HTTP. Browsers will block the request. Use an https ngrok/cloudflared URL.',
-        )
-      }
-      const res = await fetch(url, {
+      // tunnel mode — route through server-side proxy to avoid CORS / ngrok interstitial
+      const tunnelBase = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+      const res = await fetch('/api/local-chat-completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Bypass ngrok's free-tier browser warning page. Any value works;
-          // ngrok skips the HTML interstitial when this header is present,
-          // which would otherwise serve a no-CORS HTML page and surface as
-          // "Failed to fetch" in the browser.
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetBase: tunnelBase, ...body }),
       })
       const raw = await res.text()
       if (!res.ok) {
         setPhase('error')
         setMessage(`HTTP ${res.status}: ${extractErrorMessage(raw)}`)
-        if (res.status === 403) {
-          const origin = typeof window !== 'undefined' ? window.location.origin : ''
-          setTip(`Set OLLAMA_ORIGINS=${origin} on the Ollama machine and restart it.`)
+        if (res.status === 400 && /not allowed/i.test(raw)) {
+          setTip(
+            'The proxy rejected this URL. Make sure you pasted the full ngrok/cloudflared HTTPS URL (e.g. https://abc-123.ngrok-free.app).',
+          )
+        } else if (res.status === 502) {
+          setTip(
+            [
+              'The server could not reach Ollama through your tunnel.',
+              '1. Confirm ngrok/cloudflared is running and forwarding to localhost:11434.',
+              '2. Confirm Ollama is running (try: curl http://localhost:11434/api/tags).',
+              '3. If using ngrok free tier, make sure you are logged in (ngrok config add-authtoken).',
+            ].join(' '),
+          )
         }
         onResult?.(false)
         return
@@ -170,22 +165,20 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       setPhase('ok')
       setMessage(text)
       setSavedModelVerified(true)
-      setTip('Confirmed: your public tunnel URL is alive and Ollama accepted the request.')
+      setTip('Confirmed: your tunnel is live and Ollama responded successfully.')
       onResult?.(true)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setPhase('error')
       setMessage(msg)
       if (/failed to fetch|networkerror/i.test(msg)) {
-        const origin = typeof window !== 'undefined' ? window.location.origin : ''
         setTip(
           mode === 'tunnel'
             ? [
-                `"Failed to fetch" means the browser never got a valid response. Three common causes, in order:`,
-                `1. Tunnel is offline — open ${target.trim().replace(/\/+$/, '')}/api/tags in a new browser tab. If you see an error page or nothing loads, restart ngrok.`,
-                `2. OLLAMA_ORIGINS isn't actually live. On Windows, setting the variable via PowerShell does NOT apply to an already-running Ollama. Right-click the Ollama tray icon → Quit (don't just close the window), then relaunch Ollama from the Start menu. Verify with: Get-Process ollama | Stop-Process; then $env:OLLAMA_ORIGINS; then start ollama.`,
-                `3. OLLAMA_ORIGINS value mismatch. It must be EXACTLY ${origin} (no trailing slash, no path). Try setting it to * temporarily to confirm that's the issue — if * works, your specific value is off.`,
-                `Also: make sure the URL saved above is your ngrok HTTPS URL, not the ngrok dashboard URL.`,
+                '"Failed to fetch" — the server-side proxy could not reach your tunnel.',
+                '1. Confirm ngrok or cloudflared is running.',
+                '2. Confirm Ollama is running on the same machine.',
+                '3. Try opening your tunnel URL in a new browser tab to verify it loads.',
               ].join(' ')
             : 'The Next server could not reach Ollama. Check OLLAMA_HOST=0.0.0.0 and firewall for port 11434.',
         )
