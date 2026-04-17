@@ -6,7 +6,7 @@ import { ChorusSidebar } from './sidebar'
 import { ChorusTopBar } from './top-bar'
 import { ChorusComposer } from './composer'
 import { ChorusWelcome } from './welcome'
-import { ChorusChatStream, type ChatTurn, type AgentResponse } from './chat-stream'
+import { ChorusChatStream, type ChatTurn } from './chat-stream'
 import { useNetworkStatus } from '@/hooks/use-network-status'
 import {
   createJob,
@@ -16,7 +16,6 @@ import {
 } from '@/lib/api/orchestrator'
 import { writeSimulationSession } from '@/lib/runtime/session'
 import { getChat, upsertChat } from '@/lib/runtime/chat-history'
-import { isDemoMode, demoDebate, demoSleep } from '@/lib/runtime/demo-mode'
 
 const ACTIVE_CHAT_KEY = 'chorus_active_chat_id'
 
@@ -213,92 +212,6 @@ export function ChorusAppShell() {
     const prompt = draft.trim()
     setError(null)
     setSending(true)
-
-    // Demo mode: replay a pre-canned multi-round debate locally.
-    if (isDemoMode()) {
-      const debate = demoDebate()
-      const userTurn: ChatTurn = {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        text: prompt,
-        createdAt: Date.now(),
-      }
-      setTurns((prev) => [...prev, userTurn])
-      setDraft('')
-      setTitle(prompt.slice(0, 48))
-
-      for (const round of debate.rounds) {
-        const turnId = `chorus-r${round.round}-${Date.now()}`
-        const baseTurn: ChatTurn = {
-          id: turnId,
-          role: 'chorus',
-          voicesRequested: round.responses.length,
-          responses: [],
-          createdAt: Date.now(),
-        }
-        setTurns((prev) => [...prev, baseTurn])
-        await demoSleep(500)
-
-        // Stream responses in, one at a time with a small jitter.
-        for (let i = 0; i < round.responses.length; i++) {
-          const r = round.responses[i]
-          const streamingResponse: AgentResponse = {
-            peerId: r.peerId,
-            model: r.model,
-            text: '',
-            status: 'streaming',
-          }
-          setTurns((prev) =>
-            prev.map((t) =>
-              t.id === turnId ? { ...t, responses: [...(t.responses ?? []), streamingResponse] } : t,
-            ),
-          )
-          await demoSleep(180 + Math.random() * 240)
-
-          // Word-by-word streaming for realism.
-          const words = r.text.split(' ')
-          let acc = ''
-          for (let w = 0; w < words.length; w++) {
-            acc += (w === 0 ? '' : ' ') + words[w]
-            setTurns((prev) =>
-              prev.map((t) => {
-                if (t.id !== turnId) return t
-                const responses = (t.responses ?? []).map((rr, idx) =>
-                  idx === i ? { ...rr, text: acc, status: 'streaming' as const } : rr,
-                )
-                return { ...t, responses }
-              }),
-            )
-            await demoSleep(18 + Math.random() * 22)
-          }
-
-          // Finalize.
-          setTurns((prev) =>
-            prev.map((t) => {
-              if (t.id !== turnId) return t
-              const responses = (t.responses ?? []).map((rr, idx) =>
-                idx === i ? { ...rr, text: r.text, status: 'done' as const, latencyMs: r.latencyMs } : rr,
-              )
-              return { ...t, responses }
-            }),
-          )
-          await demoSleep(80)
-        }
-
-        // After final round, drop in the synthesized consensus.
-        if (round.round === debate.rounds[debate.rounds.length - 1].round) {
-          await demoSleep(600)
-          setTurns((prev) =>
-            prev.map((t) => (t.id === turnId ? { ...t, consensus: debate.consensus } : t)),
-          )
-        } else {
-          await demoSleep(500)
-        }
-      }
-
-      setSending(false)
-      return
-    }
 
     if (!isOrchestratorConfigured()) {
       setError('No orchestrator configured. Visit /setup to connect your node.')
