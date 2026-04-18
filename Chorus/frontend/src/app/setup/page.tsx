@@ -305,11 +305,11 @@ export default function SetupPage() {
 
   const networkCommandsTunnel: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: `# Quit any tray Ollama first (menu bar → Quit), then in Terminal:\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve\n# Leave this terminal open — Ollama runs here. Boot log should print:\n#   "OLLAMA_ORIGINS: ${origin}"`,
+      code: `# Terminal #1 — Ollama. Quit tray app first (menu bar → Quit).\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve\n# Keep this terminal open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
       note: TRAY_WARNING,
     },
     windows: {
-      code: `# In PowerShell. Kill ALL Ollama processes (tray + runners), then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should print: "OLLAMA_ORIGINS: ${origin}"`,
+      code: `# PowerShell #1 — Ollama. Kill tray + runners, then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Keep this window open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
       note: TRAY_WARNING,
     },
     linux: {
@@ -531,6 +531,41 @@ export default function SetupPage() {
             <code>OLLAMA_HOST=0.0.0.0</code>.
           </div>
         )}
+        {mode === 'tunnel' && (
+          <div
+            style={{
+              padding: '0.7rem 0.85rem',
+              borderRadius: 5,
+              border: '1px solid rgba(180,200,255,0.25)',
+              background: 'rgba(30,40,70,0.3)',
+              fontSize: 12.5,
+              color: 'rgba(220,230,255,0.9)',
+              lineHeight: 1.5,
+              marginBottom: '0.75rem',
+            }}
+          >
+            <div style={{ fontWeight: 600, color: 'rgba(230,240,255,0.98)', marginBottom: 4 }}>
+              Your live Chorus origin (goes into OLLAMA_ORIGINS)
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-geist-mono), monospace',
+                fontSize: 13,
+                color: 'rgba(200,220,255,0.95)',
+                background: 'rgba(0,0,0,0.35)',
+                padding: '0.35rem 0.55rem',
+                borderRadius: 3,
+                wordBreak: 'break-all',
+              }}
+            >
+              {origin}
+            </div>
+            <div style={{ fontSize: 11.5, marginTop: 6, color: 'rgba(220,230,255,0.7)' }}>
+              The code block below already has this value baked in. Do NOT leave any{' '}
+              <code>YOUR-CHORUS-URL</code> placeholder in the command.
+            </div>
+          </div>
+        )}
         <OsTabs
           value={os}
           onChange={setOs}
@@ -547,9 +582,10 @@ export default function SetupPage() {
             lineHeight: 1.5,
           }}
         >
-          <strong style={{ color: 'rgba(255,230,200,0.95)' }}>After setting the env var:</strong> quit
-          Ollama from the tray/menu bar icon, then relaunch it. Env vars set before the app was running
-          are not picked up.
+          <strong style={{ color: 'rgba(255,230,200,0.95)' }}>Confirm the boot log:</strong> after{' '}
+          <code>ollama serve</code> starts, check the <code>OLLAMA_ORIGINS</code> list in the boot
+          log contains the URL above. If it shows <code>YOUR-CHORUS-URL</code> or any other
+          placeholder, stop Ollama, fix the env var, and restart.
         </div>
       </StepShell>
     ),
@@ -559,26 +595,27 @@ export default function SetupPage() {
         icon={<Globe2 size={18} />}
         eyebrow={`Step 5 of ${totalSteps}`}
         title="Expose Ollama to the internet"
-        subtitle="A tunnel is a small program that gives your computer a temporary public URL. Chorus uses that URL to reach your local Ollama when the site itself is not running on your laptop."
+        subtitle="Open a SECOND terminal (leave the Ollama one running). Run ngrok there to give Ollama a public https URL."
       >
         <div
           style={{
             padding: '0.75rem 0.9rem',
             borderRadius: 5,
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(255,255,255,0.025)',
+            border: '1px solid rgba(255,210,160,0.25)',
+            background: 'rgba(60,45,30,0.32)',
             fontSize: 12.5,
-            color: 'rgba(255,255,255,0.72)',
-            lineHeight: 1.6,
+            color: 'rgba(255,220,180,0.88)',
+            lineHeight: 1.55,
             marginBottom: '0.8rem',
           }}
         >
-          <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginBottom: 6 }}>
-            What is ngrok?
+          <div style={{ fontWeight: 600, color: 'rgba(255,235,200,0.96)', marginBottom: 4 }}>
+            Two terminals — don&apos;t close the first one
           </div>
           <div>
-            `ngrok` is an app you run on your computer. It creates an <strong>https URL on the public internet</strong> and forwards requests from that URL to{' '}
-            <code>http://localhost:11434</code>, where Ollama is running.
+            Terminal #1 keeps running <code>ollama serve</code> from the previous step. Open a brand
+            new terminal window for ngrok. Ollama and ngrok both need to stay running for Chorus to
+            reach you.
           </div>
         </div>
         <div
@@ -627,11 +664,9 @@ export default function SetupPage() {
               >
                 Install it →
               </a>{' '}
-              Look for the line like{' '}
-              <span style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
-                Forwarding https://abc-123.ngrok-free.app → http://localhost:11434
-              </span>
-              . Copy that https URL into the field below.
+              Look for the <code>Forwarding</code> line — the https URL ends in{' '}
+              <code>.ngrok-free.dev</code> or <code>.ngrok-free.app</code> (varies by ngrok
+              version). Copy that full https URL into the field below. Do NOT include a path.
             </p>
           </>
         ) : (

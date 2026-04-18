@@ -3,9 +3,12 @@ const METADATA_HOST = '169.254.169.254'
 /** Known tunnel hostname patterns that are safe to proxy through. */
 const TUNNEL_HOSTNAME_PATTERNS = [
   /\.ngrok-free\.app$/i,
+  /\.ngrok-free\.dev$/i,
   /\.ngrok\.io$/i,
   /\.ngrok\.app$/i,
+  /\.ngrok\.dev$/i,
   /\.trycloudflare\.com$/i,
+  /\.loca\.lt$/i,
 ]
 
 /** RFC1918 LAN (not 127.x — server-side proxy must not target loopback or it hits the wrong PC). */

@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Proxy target not allowed. Use a LAN IP (10.x / 172.16–31.x / 192.168.x) so this Next server can reach Ollama, or set NEXT_CHAT_PROXY_EXTRA_HOSTS for specific hostnames. For http://127.0.0.1:11434 the browser must call Ollama directly — set OLLAMA_ORIGINS to include your Next UI origin.',
+          'Proxy target not allowed. Allowed: RFC1918 LAN IPs (10.x / 172.16–31.x / 192.168.x), or tunnel hosts on *.ngrok-free.app/.dev, *.ngrok.app/.io/.dev, *.trycloudflare.com, *.loca.lt. Override with NEXT_CHAT_PROXY_EXTRA_HOSTS. For 127.0.0.1, the browser calls Ollama directly — make sure OLLAMA_ORIGINS includes this UI origin.',
       },
       { status: 400 },
     )
