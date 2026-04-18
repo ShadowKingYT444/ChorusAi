@@ -5,7 +5,6 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   ArrowRight,
-  CheckCircle2,
   Cloud,
   Download,
   Globe2,
@@ -15,7 +14,6 @@ import {
   Package,
   Plug,
   Radio,
-  Shield,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CodeBlock } from '@/components/chorus/setup-wizard/code-block'
@@ -875,78 +873,31 @@ export default function SetupPage() {
         icon={<Radio size={18} />}
         eyebrow={`Step ${totalSteps} of ${totalSteps}`}
         title="Connect to the Chorus network"
-        subtitle={
-          orchestratorBase.trim()
-            ? "Orchestrator URL is set. Click Finish setup — we'll verify it's reachable before continuing."
-            : "Point this browser at a signaling / orchestrator server, then click Finish setup so we can verify it's reachable."
-        }
+        subtitle="Verify the orchestrator is reachable, then open Chorus."
       >
-        {orchestratorBase.trim() ? (
+        {!orchestratorBase.trim() && !orchestratorBaseFromEnv && (
           <div
             style={{
-              padding: '0.75rem 0.9rem',
-              borderRadius: 5,
-              border: '1px solid rgba(143,212,168,0.3)',
-              background: 'rgba(30,60,40,0.3)',
-              color: 'rgba(210,240,220,0.92)',
-              fontSize: 12.5,
-              lineHeight: 1.55,
-              marginBottom: '0.8rem',
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 4, color: 'rgba(220,245,225,0.98)' }}>
-              {orchestratorBaseFromEnv
-                ? 'Public Chorus signaling server pre-configured'
-                : 'Orchestrator URL set'}
-            </div>
-            <div>
-              {orchestratorBaseFromEnv
-                ? "The orchestrator URL below was provided by this deployment. You don't need to host anything — just click "
-                : 'Using the URL below. Click '}
-              <strong>Finish setup</strong>. The wizard will GET <code>{`${orchestratorBase.trim().replace(/\/+$/, '')}/health`}</code>{' '}
-              and surface the exact problem if it fails.
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              padding: '0.75rem 0.9rem',
+              padding: '0.65rem 0.85rem',
               borderRadius: 5,
               border: '1px solid rgba(180,200,255,0.22)',
-              background: 'rgba(30,40,70,0.32)',
+              background: 'rgba(30,40,70,0.3)',
               color: 'rgba(210,225,255,0.9)',
-              fontSize: 12.5,
-              lineHeight: 1.55,
-              marginBottom: '0.8rem',
+              fontSize: 12,
+              lineHeight: 1.5,
+              marginBottom: '0.7rem',
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: 6, color: 'rgba(230,238,255,0.98)' }}>
-              No orchestrator URL configured for this deployment
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              Easiest path: deploy your own backend to Railway with one click —{' '}
-              <a
-                href="https://github.com/ShadowKingYT444/ChorusAi#hosting-the-backend-railway"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'rgba(180,210,255,0.95)' }}
-              >
-                follow the README
-              </a>
-              , then paste the resulting <code>https://*.up.railway.app</code> URL below.
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              Self-hosting locally is also possible (Python 3.11+ from a clone of{' '}
-              <a
-                href="https://github.com/ShadowKingYT444/ChorusAi"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'rgba(180,210,255,0.95)' }}
-              >
-                the repo
-              </a>
-              ), but Railway is the recommended path for hosted users.
-            </div>
+            No orchestrator configured. Deploy a backend to Railway (
+            <a
+              href="https://github.com/ShadowKingYT444/ChorusAi#hosting-the-backend-railway"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'rgba(180,210,255,0.95)' }}
+            >
+              README
+            </a>
+            ) and paste the <code>https://*.up.railway.app</code> URL below.
           </div>
         )}
 
@@ -959,13 +910,13 @@ export default function SetupPage() {
             color: 'rgba(255,255,255,0.5)',
           }}
         >
-          Orchestrator base URL
+          Orchestrator URL
         </label>
         <input
           value={orchestratorBase}
           onChange={(e) => setOrchestratorBase(e.target.value)}
           onBlur={onConnectOrchestrator}
-          placeholder="http://192.168.1.10:8000"
+          placeholder="https://your-app.up.railway.app"
           autoComplete="off"
           spellCheck={false}
           style={{
@@ -979,75 +930,43 @@ export default function SetupPage() {
             fontFamily: 'var(--font-geist-mono), monospace',
           }}
         />
-        <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
-          Saved in this browser and reused across tabs. Equivalent to{' '}
-          <code style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
-            NEXT_PUBLIC_ORCHESTRATOR_BASE_URL
-          </code>
-          .{' '}
-          {orchestratorBase.trim() && (
-            <>
-              Currently using{' '}
-              <span style={{ color: 'rgba(255,255,255,0.82)' }}>{orchestratorBase.trim()}</span>.
-            </>
-          )}
-        </p>
 
-        <div
+        <button
+          type="button"
+          onClick={onFinishSetup}
+          disabled={probePhase === 'probing' || !orchestratorBase.trim()}
           style={{
-            display: 'flex',
-            gap: '0.6rem',
-            flexWrap: 'wrap',
-            marginTop: '0.3rem',
+            alignSelf: 'flex-start',
+            padding: '0.6rem 1.15rem',
+            marginTop: '0.4rem',
+            borderRadius: 4,
+            border: 'none',
+            background:
+              probePhase === 'probing' || !orchestratorBase.trim()
+                ? 'rgba(255,255,255,0.35)'
+                : 'rgba(255,255,255,0.92)',
+            color: '#050508',
+            fontWeight: 600,
+            fontSize: 13.5,
+            cursor:
+              probePhase === 'probing'
+                ? 'wait'
+                : !orchestratorBase.trim()
+                  ? 'not-allowed'
+                  : 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
           }}
         >
-          <button
-            type="button"
-            onClick={onFinishSetup}
-            disabled={probePhase === 'probing'}
-            style={{
-              padding: '0.6rem 1.15rem',
-              borderRadius: 4,
-              border: 'none',
-              background: probePhase === 'probing' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.92)',
-              color: '#050508',
-              fontWeight: 600,
-              fontSize: 13.5,
-              cursor: probePhase === 'probing' ? 'wait' : 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-            }}
-          >
-            {probePhase === 'probing' ? 'Verifying…' : 'Verify & open Chorus'}
-            <ArrowRight size={14} />
-          </button>
-          <Link
-            href="/join"
-            style={{
-              padding: '0.6rem 1rem',
-              borderRadius: 4,
-              border: '1px solid rgba(255,255,255,0.18)',
-              background: 'transparent',
-              color: 'rgba(255,255,255,0.85)',
-              fontWeight: 500,
-              fontSize: 13,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-            }}
-          >
-            <Radio size={13} />
-            Advanced join
-          </Link>
-        </div>
+          {probePhase === 'probing' ? 'Testing connection…' : 'Test & open Chorus'}
+          <ArrowRight size={14} />
+        </button>
 
         {probePhase === 'error' && (
           <div
             role="alert"
             style={{
-              marginTop: '0.6rem',
               padding: '0.7rem 0.85rem',
               borderRadius: 5,
               border: '1px solid rgba(246,168,154,0.35)',
@@ -1058,7 +977,7 @@ export default function SetupPage() {
               wordBreak: 'break-word',
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: 3 }}>Couldn&apos;t reach the orchestrator</div>
+            <div style={{ fontWeight: 600, marginBottom: 3 }}>Orchestrator unreachable</div>
             <div style={{ color: 'rgba(246,200,190,0.88)' }}>{probeMessage}</div>
           </div>
         )}
@@ -1066,7 +985,6 @@ export default function SetupPage() {
           <div
             role="status"
             style={{
-              marginTop: '0.6rem',
               padding: '0.6rem 0.85rem',
               borderRadius: 5,
               border: '1px solid rgba(143,212,168,0.35)',
@@ -1078,103 +996,6 @@ export default function SetupPage() {
             Verified. Opening Chorus…
           </div>
         )}
-
-        <div
-          style={{
-            marginTop: '0.5rem',
-            padding: '0.75rem 0.9rem',
-            borderRadius: 5,
-            border: '1px solid rgba(143,212,168,0.25)',
-            background: 'rgba(30,60,40,0.28)',
-            color: 'rgba(200,240,210,0.9)',
-            fontSize: 12.5,
-            lineHeight: 1.55,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              fontWeight: 600,
-              marginBottom: 4,
-            }}
-          >
-            <CheckCircle2 size={14} style={{ color: '#8fd4a8' }} />
-            You&apos;re set up
-          </div>
-          <div>
-            Model <code>{model}</code> · {mode === 'local' ? 'LAN mode' : 'Tunnel mode'} ·{' '}
-            {mode === 'local' ? lanIp || '(no IP yet)' : tunnelUrl || '(no tunnel yet)'}
-          </div>
-          <div style={{ marginTop: 4 }}>
-            Peer endpoint <code>{deriveModelPublicUrl(mode, lanIp, tunnelUrl) || '(not set yet)'}</code>
-          </div>
-          <div style={{ marginTop: 4 }}>
-            Status: {isSavedModelVerified() ? <strong>verified</strong> : <strong>not verified yet</strong>}
-          </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: '0.9rem',
-            padding: '0.85rem 0.95rem',
-            borderRadius: 5,
-            border: '1px solid rgba(255,255,255,0.10)',
-            background: 'rgba(255,255,255,0.025)',
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10.5,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'rgba(255,255,255,0.45)',
-              fontFamily: 'var(--font-geist-mono), monospace',
-              marginBottom: 8,
-            }}
-          >
-            What happens when you prompt Chorus
-          </div>
-          <ul
-            style={{
-              listStyle: 'none',
-              margin: 0,
-              padding: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              fontSize: 12.5,
-              color: 'rgba(255,255,255,0.80)',
-              lineHeight: 1.55,
-            }}
-          >
-            <li>
-              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
-              Orchestrator fans the prompt across every online peer, each with a distinct persona.
-            </li>
-            <li>
-              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
-              Round-by-round answers stream into the feed live — watch the swarm think in real time.
-            </li>
-            <li>
-              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
-              A consensus/dissent graph scores each peer; watchdogs prune refusals and duplicates.
-            </li>
-            <li>
-              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
-              A moderator agent merges the best answers into a <strong>single final response</strong> with citations.
-            </li>
-            <li>
-              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
-              Payout splits (floor + consensus bonus + dissent bonus) ship with an <strong>Ed25519-signed receipt</strong>.
-            </li>
-            <li>
-              <span style={{ color: '#8fd4a8', marginRight: 6 }}>▸</span>
-              Every job is saved — your history is on the sidebar, intact across restarts.
-            </li>
-          </ul>
-        </div>
       </StepShell>
     ),
   }
@@ -1342,7 +1163,7 @@ export default function SetupPage() {
             Back
           </button>
 
-          {clampedIndex < totalSteps - 1 ? (
+          {clampedIndex < totalSteps - 1 && (
             <button
               type="button"
               onClick={goNext}
@@ -1363,29 +1184,6 @@ export default function SetupPage() {
             >
               Next
               <ArrowRight size={14} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onFinishSetup}
-              disabled={probePhase === 'probing'}
-              style={{
-                padding: '0.6rem 1.25rem',
-                borderRadius: 4,
-                border: 'none',
-                background:
-                  probePhase === 'probing' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.92)',
-                color: '#050508',
-                fontWeight: 600,
-                fontSize: 13.5,
-                cursor: probePhase === 'probing' ? 'wait' : 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-              }}
-            >
-              <Shield size={13} />
-              {probePhase === 'probing' ? 'Verifying…' : 'Finish setup'}
             </button>
           )}
         </div>
