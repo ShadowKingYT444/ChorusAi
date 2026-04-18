@@ -93,8 +93,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid OpenAI body.' }, { status: 400 })
   }
 
-  // Build headers — add ngrok bypass header for tunnel URLs.
+  // Build headers — forward browser Origin so Ollama's CORS check passes,
+  // and add ngrok bypass header for tunnel URLs.
   const upstreamHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+  const incomingOrigin = req.headers.get('origin')
+  if (incomingOrigin) {
+    upstreamHeaders['Origin'] = incomingOrigin
+  }
   if (isTunnelHostname(host)) {
     upstreamHeaders['ngrok-skip-browser-warning'] = 'true'
   }
