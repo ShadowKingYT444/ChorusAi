@@ -22,54 +22,17 @@ const ACTIVE_CHAT_KEY = 'chorus_active_chat_id'
 
 const DEFAULT_JOB_CONTEXT =
   'You are participating in a distributed Chorus debate. Answer directly, add concrete reasoning, and adapt when peer context appears in later rounds.'
-const AUTO_FILL_MAX_VOICES = 8
-const SYNTHETIC_MODEL_POOL = [
-  'qwen2.5:0.5b',
-  'llama3.2:1b',
-  'gemma2:2b',
-  'phi3:mini',
-  'mistral-nemo',
-]
-const SYNTHETIC_NAME_POOL = [
-  'analyst',
-  'reviewer',
-  'strategist',
-  'challenger',
-  'synthesizer',
-  'architect',
-  'researcher',
-  'auditor',
-]
-
 type LaunchParticipant = {
   peer: PeerEntry
   completionBaseUrl: string
 }
 
-function makeSyntheticParticipant(index: number): LaunchParticipant {
-  const name = SYNTHETIC_NAME_POOL[index % SYNTHETIC_NAME_POOL.length]
-  const peerId = `chorus-${name}-${index + 1}`
-  const now = Math.round(Date.now() / 1000)
-  return {
-    peer: {
-      peer_id: peerId,
-      model: SYNTHETIC_MODEL_POOL[index % SYNTHETIC_MODEL_POOL.length],
-      joined_at: now,
-      status: 'idle',
-      verified: false,
-    },
-    completionBaseUrl: `synthetic://${peerId}`,
-  }
-}
-
 function buildLaunchParticipants(
   peers: PeerEntry[],
   requestedVoices: number,
-  autoFill: boolean,
 ): {
   participants: LaunchParticipant[]
   liveCount: number
-  syntheticCount: number
 } {
   const addressedPeers = [...peers]
     .filter((peer) => Boolean(peer.address?.trim()))
@@ -78,30 +41,14 @@ function buildLaunchParticipants(
       return a.peer_id.localeCompare(b.peer_id)
     })
 
-  const liveTarget = autoFill
-    ? Math.min(requestedVoices, Math.min(1, addressedPeers.length))
-    : Math.min(requestedVoices, addressedPeers.length)
-
-  const live = addressedPeers.slice(0, liveTarget).map((peer) => ({
+  const live = addressedPeers.slice(0, requestedVoices).map((peer) => ({
     peer,
     completionBaseUrl: peer.address?.trim() ?? '',
   }))
 
-  if (!autoFill && live.length < requestedVoices) {
-    return {
-      participants: live,
-      liveCount: live.length,
-      syntheticCount: 0,
-    }
-  }
-
-  const syntheticCount = Math.max(0, requestedVoices - live.length)
-  const synthetics = Array.from({ length: syntheticCount }, (_, index) => makeSyntheticParticipant(index))
-
   return {
-    participants: [...live, ...synthetics],
+    participants: live,
     liveCount: live.length,
-    syntheticCount,
   }
 }
 
@@ -113,7 +60,6 @@ export function ChorusAppShell() {
   const [draft, setDraft] = useState('')
   const [voices, setVoices] = useState(5)
   const [rounds, setRounds] = useState(3)
-  const [bounty, setBounty] = useState(0.5)
   const [sending, setSending] = useState(false)
   const [title, setTitle] = useState('New conversation')
   const [error, setError] = useState<string | null>(null)
@@ -122,7 +68,7 @@ export function ChorusAppShell() {
   const jobWs = useJobWebSocket(currentJobId)
 
   const readyPeerCount = status.peers.filter((peer) => Boolean(peer.address?.trim())).length
-  const maxVoices = Math.max(status.online, AUTO_FILL_MAX_VOICES)
+  const maxVoices = Math.max(1, readyPeerCount)
   const clampedVoices = Math.min(Math.max(1, voices), maxVoices)
 
   // Track first-mount restore so the auto-save effect doesn't wipe
@@ -277,7 +223,7 @@ export function ChorusAppShell() {
     }
 
     try {
-      const launchPlan = buildLaunchParticipants(status.peers, clampedVoices, true)
+      const launchPlan = buildLaunchParticipants(status.peers, clampedVoices)
       if (launchPlan.participants.length === 0) {
         throw new Error('Set up your Ollama node first so Chorus has at least one live endpoint.')
       }
@@ -287,7 +233,7 @@ export function ChorusAppShell() {
         prompt,
         agent_count: launchPlan.participants.length,
         rounds,
-        payout: bounty,
+        payout: 0,
         embedding_model_version: 'live-consensus',
       })
 
@@ -307,7 +253,7 @@ export function ChorusAppShell() {
         prompt,
         agentCount: launchPlan.participants.length,
         rounds,
-        bounty,
+        bounty: 0,
         jobId: created.job_id,
         mode: 'backend',
         createdAt: new Date().toISOString(),
@@ -345,7 +291,7 @@ export function ChorusAppShell() {
     } finally {
       setSending(false)
     }
-  }, [bounty, clampedVoices, draft, rounds, router, sending, status.peers])
+  }, [clampedVoices, draft, rounds, router, sending, status.peers])
 
   const hasTurns = turns.length > 0
   const openNetwork = useCallback(() => router.push('/app'), [router])
@@ -394,9 +340,7 @@ export function ChorusAppShell() {
           <div className="mx-auto max-w-3xl w-full">
             <LaunchControls
               rounds={rounds}
-              bounty={bounty}
               onRoundsChange={setRounds}
-              onBountyChange={setBounty}
             />
             {bottomHint && (
               <div className="mb-2 font-mono text-[10.5px] text-white/55 text-center">
@@ -422,18 +366,14 @@ export function ChorusAppShell() {
 
 function LaunchControls({
   rounds,
-  bounty,
   onRoundsChange,
-  onBountyChange,
 }: {
   rounds: number
-  bounty: number
   onRoundsChange: (value: number) => void
-  onBountyChange: (value: number) => void
 }) {
   return (
     <div
-      className="mb-3 grid gap-2 md:grid-cols-[1fr_1fr_auto]"
+      className="mb-3 grid gap-2 md:grid-cols-[1fr_auto]"
       style={{
         background: 'rgba(255,255,255,0.025)',
         border: '1px solid rgba(255,255,255,0.06)',
@@ -449,15 +389,6 @@ function LaunchControls({
         step={1}
         display={`${rounds}`}
         onChange={onRoundsChange}
-      />
-      <SliderControl
-        label="Bounty"
-        value={bounty}
-        min={0.1}
-        max={1}
-        step={0.05}
-        display={`$${bounty.toFixed(2)}`}
-        onChange={onBountyChange}
       />
       <div
         className="h-fit self-end rounded-xl px-3 py-2"

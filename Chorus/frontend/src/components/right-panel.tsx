@@ -507,64 +507,6 @@ export function RightPanel({
         </div>
       </div>
 
-      {/* ── Settlement panel ── */}
-      {settlement && (
-        <div style={{
-          padding: '10px 14px',
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          flexShrink: 0,
-          background: 'rgba(255,255,255,0.015)',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginBottom: 8,
-          }}>
-            <span style={{ fontFamily: MONO, fontSize: 8, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.40)' }}>
-              SETTLEMENT · {settlement.total_pool.toFixed(0)} POOL
-            </span>
-            {settlement.receipt?.signature && (
-              <span
-                title={`Ed25519 · ${settlement.receipt.pubkey?.slice(0, 16)}…`}
-                style={{ fontFamily: MONO, fontSize: 7, color: 'rgba(120,240,170,0.85)', letterSpacing: '0.08em' }}
-              >
-                ✓ {settlement.receipt.signature.slice(0, 14)}…
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {Object.entries(settlement.payouts).map(([slot, total]) => {
-              const br = settlement.payout_breakdown?.[slot]
-              const title = br
-                ? `floor ${br.floor} + consensus ${br.consensus_bonus} + dissent ${br.dissent_bonus} = ${br.total}`
-                : `${total}`
-              return (
-                <div
-                  key={slot}
-                  title={title}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.72)',
-                  }}
-                >
-                  <span style={{ minWidth: 64, color: 'rgba(255,255,255,0.45)' }}>{slot}</span>
-                  <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 1, overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${Math.min(100, (total / Math.max(1, settlement.total_pool)) * 100 * settlement.eligible_agents)}%`,
-                        background: 'rgba(255,255,255,0.55)',
-                      }}
-                    />
-                  </div>
-                  <span style={{ minWidth: 44, textAlign: 'right', color: 'rgba(255,255,255,0.85)' }}>
-                    {total.toFixed(2)}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* ── Cluster legend ── */}
       <div style={{
