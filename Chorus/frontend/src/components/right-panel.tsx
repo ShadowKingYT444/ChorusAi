@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AGENT_MESSAGES, CLUSTERS, type AgentMessage, type ClusterID } from '@/lib/mock-data'
+import { CLUSTERS, type AgentMessage, type ClusterID } from '@/lib/mock-data'
 
 const SANS = 'var(--font-geist-sans)'
 const MONO = 'var(--font-geist-mono)'
@@ -252,7 +252,7 @@ export function RightPanel({
   citations?: string[]
   settlement?: SettlementPreview | null
 }) {
-  const sourceMessages = messages ?? AGENT_MESSAGES
+  const sourceMessages = messages ?? []
   const [visibleCount, setVisibleCount] = useState(0)
   const [filter, setFilter] = useState<FilterType>('all')
   const feedRef = useRef<HTMLDivElement>(null)

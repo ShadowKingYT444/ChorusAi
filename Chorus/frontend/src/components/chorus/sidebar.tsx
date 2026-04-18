@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import {
-  Compass,
   MessageSquarePlus,
   Network,
   Rocket,
@@ -84,7 +83,6 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
 
       {/* Nav */}
       <nav className="px-3 pt-4 flex flex-col gap-0.5">
-        <NavItem icon={<Compass className="w-3.5 h-3.5" />} label="Discover" href="/join" />
         <NavItem icon={<Rocket className="w-3.5 h-3.5" />} label="Get Started" href="/setup" />
         <NavItem icon={<Network className="w-3.5 h-3.5" />} label="Network" href="/app" />
       </nav>

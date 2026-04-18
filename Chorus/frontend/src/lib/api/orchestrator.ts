@@ -132,6 +132,34 @@ export interface PeersResponse {
   peers: PeerEntry[]
 }
 
+export interface ClusterEntry {
+  id: string
+  label: string
+  kind: 'model' | string
+  peer_ids: string[]
+  size: number
+}
+
+export interface ClusterEdge {
+  source: string
+  target: string
+  weight: number
+  kind: 'co_job' | string
+}
+
+export interface ClusterStats {
+  total_peers: number
+  total_clusters: number
+  total_edges: number
+  total_jobs_observed: number
+}
+
+export interface ClustersResponse {
+  clusters: ClusterEntry[]
+  edges: ClusterEdge[]
+  stats: ClusterStats
+}
+
 export interface CreateJobRequest {
   context: string
   prompt: string
@@ -442,6 +470,10 @@ export function setSavedModelVerified(verified: boolean): void {
 
 export async function getPeers(): Promise<PeersResponse> {
   return requestJson<PeersResponse>('/peers')
+}
+
+export async function getClusters(): Promise<ClustersResponse> {
+  return requestJson<ClustersResponse>('/clusters')
 }
 
 export async function createJob(req: CreateJobRequest): Promise<CreateJobResponse> {

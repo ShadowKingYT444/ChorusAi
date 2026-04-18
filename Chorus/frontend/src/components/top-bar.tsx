@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { TextDisperse } from '@/components/ui/text-disperse'
+import { Sparkles } from 'lucide-react'
 import { useSimulation } from '@/hooks/use-simulation'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
 
@@ -36,13 +36,21 @@ export function TopBar() {
         className="w-[200px] shrink-0"
       >
         <Link href="/" className="flex items-center gap-2.5 cursor-pointer transition-opacity duration-150 hover:opacity-80">
-          <span className="font-mono font-bold text-sm text-white leading-none" style={{ letterSpacing: '-0.02em' }}>
-            DL
+          <span
+            className="relative grid place-items-center w-7 h-7 rounded-lg shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, rgba(180,200,255,0.25), rgba(255,255,255,0.05))',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-white/85" />
           </span>
-          <span className="text-white/20 font-mono text-xs">|</span>
-          <TextDisperse className="font-sans text-sm text-white/50 tracking-tight w-auto ml-1 -mt-0.5" style={{ fontSize: '14px' }}>
-            CHORUS
-          </TextDisperse>
+          <span
+            className="font-sans text-[14px] text-white/95 tracking-tight"
+            style={{ fontWeight: 600 }}
+          >
+            Chorus
+          </span>
         </Link>
       </motion.div>
 

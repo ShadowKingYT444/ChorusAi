@@ -22,6 +22,10 @@ from orchestrator.models import (
     BroadcastInvokeRequest,
     BroadcastPlanRequest,
     BroadcastPlanResponse,
+    ClusterEdge,
+    ClusterEntry,
+    ClusterStats,
+    ClustersResponse,
     CreateJobRequest,
     CreateJobResponse,
     HeartbeatMessage,
@@ -431,6 +435,64 @@ async def list_peers() -> PeersResponse:
     peers = await registry.list_peers()
     peers_sorted = sorted(peers, key=lambda p: p.peer_id)
     return PeersResponse(count=len(peers_sorted), peers=peers_sorted)
+
+
+@app.get("/clusters", response_model=ClustersResponse)
+async def list_clusters() -> ClustersResponse:
+    """Return cluster + edge data derived from the live peer registry and job-response buffer."""
+    peers = await registry.list_peers()
+    known_peer_ids: set[str] = {p.peer_id for p in peers}
+
+    # Group peers by model.
+    by_model: dict[str, list[str]] = {}
+    for p in peers:
+        by_model.setdefault(p.model, []).append(p.peer_id)
+
+    clusters: list[ClusterEntry] = []
+    for model, pids in by_model.items():
+        if not pids:
+            continue
+        sorted_pids = sorted(pids)
+        clusters.append(
+            ClusterEntry(
+                id=f"model:{model}",
+                label=model,
+                kind="model",
+                peer_ids=sorted_pids,
+                size=len(sorted_pids),
+            )
+        )
+    clusters.sort(key=lambda c: (-c.size, c.label))
+
+    # Co-job edges: count jobs where each pair of peers co-appeared.
+    pair_counts: dict[tuple[str, str], int] = {}
+    for job_id, responses in _job_response_buffer.items():
+        unique_peers = {
+            str(row.get("peer_id"))
+            for row in responses
+            if row.get("peer_id") is not None
+        }
+        # Keep only peers still known to the registry.
+        unique_peers &= known_peer_ids
+        sorted_peers = sorted(unique_peers)
+        for i in range(len(sorted_peers)):
+            for j in range(i + 1, len(sorted_peers)):
+                a, b = sorted_peers[i], sorted_peers[j]
+                pair_counts[(a, b)] = pair_counts.get((a, b), 0) + 1
+
+    edges: list[ClusterEdge] = [
+        ClusterEdge(source=a, target=b, weight=float(count), kind="co_job")
+        for (a, b), count in pair_counts.items()
+    ]
+    edges.sort(key=lambda e: (e.source, e.target))
+
+    stats = ClusterStats(
+        total_peers=len(peers),
+        total_clusters=len(clusters),
+        total_edges=len(edges),
+        total_jobs_observed=len(_job_response_buffer),
+    )
+    return ClustersResponse(clusters=clusters, edges=edges, stats=stats)
 
 
 

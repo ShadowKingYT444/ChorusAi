@@ -41,6 +41,34 @@ class PeersResponse(BaseModel):
     peers: list[PeerEntry]
 
 
+class ClusterEntry(BaseModel):
+    id: str
+    label: str
+    kind: str
+    peer_ids: list[str]
+    size: int
+
+
+class ClusterEdge(BaseModel):
+    source: str
+    target: str
+    weight: float
+    kind: str
+
+
+class ClusterStats(BaseModel):
+    total_peers: int
+    total_clusters: int
+    total_edges: int
+    total_jobs_observed: int
+
+
+class ClustersResponse(BaseModel):
+    clusters: list[ClusterEntry]
+    edges: list[ClusterEdge]
+    stats: ClusterStats
+
+
 class BroadcastPlanRequest(BaseModel):
     prompt: str = Field(min_length=1)
     timeout_ms: int = Field(default=8000, ge=500, le=120_000)

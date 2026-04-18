@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Link from 'next/link'
-import type { PeerEntry } from '@/lib/api/orchestrator'
+import type { ClusterEdge, ClusterEntry, PeerEntry } from '@/lib/api/orchestrator'
+import { useClusters } from '@/hooks/use-clusters'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface GNode {
@@ -18,12 +19,21 @@ interface GNode {
   sx: number; sy: number; sc: number
   flash: number
   conns: number
+  clusterId: string | null
 }
-interface GEdge { a: number; b: number }
+interface GEdge {
+  a: number
+  b: number
+  weight: number
+  crossCluster: boolean
+  intra: boolean // intra-cluster ring fallback edge
+}
 interface Sig { ei: number; t: number; spd: number }
+interface ClusterColor { h: number; s: number; l: number; css: string }
 
 const FOCAL = 750
 const PANEL_W = 260
+const UNASSIGNED_CLUSTER_ID = '__unassigned__'
 
 // Deterministic hash so positions stay stable across renders for same peer id.
 function hash01(s: string, salt: number): number {
@@ -35,38 +45,44 @@ function hash01(s: string, salt: number): number {
   return ((h >>> 0) / 4294967296)
 }
 
-function layoutSphere(peers: PeerEntry[]): { x: number; y: number; z: number }[] {
-  // Fibonacci sphere for even distribution — stable regardless of peer id.
-  const n = peers.length
-  const pts: { x: number; y: number; z: number }[] = []
+// Fibonacci-sphere point (unit vector) at index i of n.
+function fibSpherePoint(i: number, n: number): { x: number; y: number; z: number } {
   const golden = Math.PI * (3 - Math.sqrt(5))
-  const R = 260 + Math.min(200, n * 4)
-  for (let i = 0; i < n; i++) {
-    const y = 1 - (i / Math.max(1, n - 1)) * 2
-    const radius = Math.sqrt(Math.max(0, 1 - y * y))
-    const theta = golden * i
-    const jitter = 12
-    const peer = peers[i].peer_id
-    pts.push({
-      x: Math.cos(theta) * radius * R + (hash01(peer, 1) - 0.5) * jitter,
-      y: y * R + (hash01(peer, 2) - 0.5) * jitter,
-      z: Math.sin(theta) * radius * R + (hash01(peer, 3) - 0.5) * jitter,
-    })
-  }
-  return pts
+  const denom = Math.max(1, n - 1)
+  const y = n === 1 ? 0 : 1 - (i / denom) * 2
+  const radius = Math.sqrt(Math.max(0, 1 - y * y))
+  const theta = golden * i
+  return { x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius }
+}
+
+function clusterColor(clusterId: string): ClusterColor {
+  const h = Math.floor(hash01(clusterId, 0) * 360)
+  const s = 70
+  const l = 60
+  return { h, s, l, css: `hsl(${h} ${s}% ${l}%)` }
 }
 
 export interface NodeGraph3DProps {
   peers: PeerEntry[]
   messages?: Array<{ peerId: string; text: string }>
   onOpenFeed?: () => void
+  clusters?: ClusterEntry[]
+  edges?: ClusterEdge[]
 }
 
-export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGraph3DProps) {
+export default function NodeGraph3D({
+  peers,
+  messages = [],
+  onOpenFeed,
+  clusters: clustersProp,
+  edges: edgesProp,
+}: NodeGraph3DProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number>(0)
   const nodesRef = useRef<GNode[]>([])
   const edgesRef = useRef<GEdge[]>([])
+  const edgeWeightTotalRef = useRef(0)
+  const clusterColorsRef = useRef<Map<string, ClusterColor>>(new Map())
   const hovRef = useRef(-1)
 
   const rotRef = useRef({ y: 0, x: 0.22 })
@@ -79,6 +95,14 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
   const [sel, setSel] = useState<GNode | null>(null)
   const [evts, setEvts] = useState<Array<{ id: number; msg: string; ts: string }>>([])
   const evtId = useRef(0)
+
+  // Fallback to hook when props aren't supplied.
+  const hookState = useClusters()
+  const clusters: ClusterEntry[] = clustersProp ?? hookState.clusters
+  const realEdges: ClusterEdge[] = edgesProp ?? hookState.edges
+  const clustersMode = hookState.mode
+  const clustersStats = hookState.stats
+
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-panel]')) return
@@ -103,56 +127,205 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
     dragRef.current.active = false
   }, [])
 
-  // Rebuild nodes/edges when peer set changes
-  useEffect(() => {
-    const positions = layoutSphere(peers)
-    const nodes: GNode[] = peers.map((p, i) => ({
-      id: i,
-      peerId: p.peer_id,
-      model: p.model,
-      address: p.address ?? null,
-      bx: positions[i].x,
-      by: positions[i].y,
-      bz: positions[i].z,
-      baseR: 4 + hash01(p.peer_id, 4) * 2,
-      dpX: hash01(p.peer_id, 5) * Math.PI * 2,
-      dpY: hash01(p.peer_id, 6) * Math.PI * 2,
-      dpZ: hash01(p.peer_id, 7) * Math.PI * 2,
-      dAmp: 1 + hash01(p.peer_id, 8) * 1.8,
-      pulseP: hash01(p.peer_id, 9) * Math.PI * 2,
-      sx: 0, sy: 0, sc: 1, flash: 0,
-      conns: 0,
-    }))
+  // Stable keys so we recompute layout only when the peer/cluster sets change.
+  const peerKey = useMemo(
+    () => peers.map((p) => p.peer_id).sort().join('|'),
+    [peers],
+  )
+  const clusterKey = useMemo(
+    () =>
+      clusters
+        .map((c) => `${c.id}:${[...c.peer_ids].sort().join(',')}`)
+        .sort()
+        .join('|'),
+    [clusters],
+  )
+  const edgeKey = useMemo(
+    () =>
+      realEdges
+        .map((e) => {
+          const [a, b] = e.source < e.target ? [e.source, e.target] : [e.target, e.source]
+          return `${a}-${b}:${e.weight}`
+        })
+        .sort()
+        .join('|'),
+    [realEdges],
+  )
 
-    // Build edges: each node links to k nearest neighbors.
-    const k = Math.min(4, Math.max(0, nodes.length - 1))
-    const edges: GEdge[] = []
-    const added = new Set<string>()
-    for (let i = 0; i < nodes.length; i++) {
-      const a = nodes[i]
-      const dists = nodes
-        .map((b, j) => ({ j, d: Math.hypot(b.bx - a.bx, b.by - a.by, b.bz - a.bz) }))
-        .filter((x) => x.j !== i)
-        .sort((x, y) => x.d - y.d)
-        .slice(0, k)
-      for (const { j } of dists) {
-        const key = i < j ? `${i}-${j}` : `${j}-${i}`
-        if (added.has(key)) continue
-        added.add(key)
-        edges.push({ a: i, b: j })
-        a.conns++
-        nodes[j].conns++
+  // Compute nodes/edges/colors in a memo so render can read sizes, then effect
+  // syncs into refs so the animation loop can mutate per-frame transient state
+  // (flash, sx/sy/sc) without React churn.
+  const graphBuild = useMemo(() => {
+    const totalPeers = peers.length
+    if (totalPeers === 0) {
+      return {
+        nodes: [] as GNode[],
+        edges: [] as GEdge[],
+        colors: new Map<string, ClusterColor>(),
+        weightTotal: 0,
       }
     }
-    nodesRef.current = nodes
-    edgesRef.current = edges
-    // Reset selection if invalid
-    if (selectedRef.current >= nodes.length) {
+
+    // Map peer_id → clusterId. A peer could belong to many clusters in principle;
+    // first-seen wins so colors stay deterministic.
+    const peerCluster = new Map<string, string>()
+    for (const c of clusters) {
+      for (const pid of c.peer_ids) {
+        if (!peerCluster.has(pid)) peerCluster.set(pid, c.id)
+      }
+    }
+
+    // Assign any stray peers to the unassigned bucket.
+    const unassigned: string[] = []
+    for (const p of peers) {
+      if (!peerCluster.has(p.peer_id)) {
+        peerCluster.set(p.peer_id, UNASSIGNED_CLUSTER_ID)
+        unassigned.push(p.peer_id)
+      }
+    }
+
+    // Stable ordered list of cluster ids we actually need to place.
+    const activeClusterIds: string[] = []
+    for (const c of clusters) {
+      if (c.peer_ids.some((pid) => peerCluster.get(pid) === c.id)) {
+        activeClusterIds.push(c.id)
+      }
+    }
+    if (unassigned.length > 0) activeClusterIds.push(UNASSIGNED_CLUSTER_ID)
+    // Deterministic ordering by hash so centroid layout is stable.
+    activeClusterIds.sort((a, b) => hash01(a, 42) - hash01(b, 42))
+
+    const rOuter = 280 + Math.min(180, totalPeers * 3)
+    const centroidOf = new Map<string, { x: number; y: number; z: number }>()
+    for (let i = 0; i < activeClusterIds.length; i++) {
+      const unit = fibSpherePoint(i, activeClusterIds.length)
+      centroidOf.set(activeClusterIds[i], {
+        x: unit.x * rOuter,
+        y: unit.y * rOuter,
+        z: unit.z * rOuter,
+      })
+    }
+
+    // Cache cluster colors
+    const colors = new Map<string, ClusterColor>()
+    for (const cid of activeClusterIds) {
+      colors.set(cid, clusterColor(cid))
+    }
+
+    // Group peer indices by cluster, preserving peers[] order for stability.
+    const peerIdxByCluster = new Map<string, number[]>()
+    for (const cid of activeClusterIds) peerIdxByCluster.set(cid, [])
+    peers.forEach((p, idx) => {
+      const cid = peerCluster.get(p.peer_id) ?? UNASSIGNED_CLUSTER_ID
+      const list = peerIdxByCluster.get(cid)
+      if (list) list.push(idx)
+    })
+
+    const positions: { x: number; y: number; z: number }[] = new Array(peers.length)
+    const jitter = 10
+    for (const [cid, idxs] of peerIdxByCluster) {
+      const centroid = centroidOf.get(cid)
+      if (!centroid) continue
+      const size = idxs.length
+      const rLocal = 40 + Math.sqrt(Math.max(1, size)) * 22
+      idxs.forEach((peerIdx, i) => {
+        const peerId = peers[peerIdx].peer_id
+        const unit = fibSpherePoint(i, size)
+        positions[peerIdx] = {
+          x: centroid.x + unit.x * rLocal + (hash01(peerId, 1) - 0.5) * jitter,
+          y: centroid.y + unit.y * rLocal + (hash01(peerId, 2) - 0.5) * jitter,
+          z: centroid.z + unit.z * rLocal + (hash01(peerId, 3) - 0.5) * jitter,
+        }
+      })
+    }
+
+    const nodes: GNode[] = peers.map((p, i) => {
+      const cid = peerCluster.get(p.peer_id) ?? null
+      return {
+        id: i,
+        peerId: p.peer_id,
+        model: p.model,
+        address: p.address ?? null,
+        bx: positions[i].x,
+        by: positions[i].y,
+        bz: positions[i].z,
+        baseR: 4 + hash01(p.peer_id, 4) * 2,
+        dpX: hash01(p.peer_id, 5) * Math.PI * 2,
+        dpY: hash01(p.peer_id, 6) * Math.PI * 2,
+        dpZ: hash01(p.peer_id, 7) * Math.PI * 2,
+        dAmp: 1 + hash01(p.peer_id, 8) * 1.8,
+        pulseP: hash01(p.peer_id, 9) * Math.PI * 2,
+        sx: 0, sy: 0, sc: 1, flash: 0,
+        conns: 0,
+        clusterId: cid === UNASSIGNED_CLUSTER_ID ? null : cid,
+      }
+    })
+
+    // Index map: peer_id → internal index
+    const idxOf = new Map<string, number>()
+    nodes.forEach((n) => idxOf.set(n.peerId, n.id))
+
+    // Build edge list: prefer real co-job edges.
+    const edges: GEdge[] = []
+    const edgeSet = new Set<string>()
+    let weightTotal = 0
+    for (const e of realEdges) {
+      const ai = idxOf.get(e.source)
+      const bi = idxOf.get(e.target)
+      if (ai === undefined || bi === undefined || ai === bi) continue
+      const [lo, hi] = ai < bi ? [ai, bi] : [bi, ai]
+      const key = `${lo}-${hi}`
+      if (edgeSet.has(key)) continue
+      edgeSet.add(key)
+      const na = nodes[lo]
+      const nb = nodes[hi]
+      const cross =
+        !!na.clusterId && !!nb.clusterId && na.clusterId !== nb.clusterId
+      const w = Math.max(0.1, e.weight || 1)
+      edges.push({ a: lo, b: hi, weight: w, crossCluster: cross, intra: false })
+      weightTotal += w
+      na.conns++
+      nb.conns++
+    }
+
+    // Fallback: if nothing, draw a thin intra-cluster ring so the shape is readable.
+    if (edges.length < 1) {
+      for (const [, idxs] of peerIdxByCluster) {
+        if (idxs.length < 2) continue
+        for (let i = 0; i < idxs.length; i++) {
+          const a = idxs[i]
+          const b = idxs[(i + 1) % idxs.length]
+          const [lo, hi] = a < b ? [a, b] : [b, a]
+          const key = `${lo}-${hi}`
+          if (edgeSet.has(key)) continue
+          edgeSet.add(key)
+          edges.push({ a: lo, b: hi, weight: 0.4, crossCluster: false, intra: true })
+          weightTotal += 0.4
+          nodes[lo].conns++
+          nodes[hi].conns++
+        }
+      }
+    }
+
+    return { nodes, edges, colors, weightTotal }
+    // peerKey/clusterKey/edgeKey collapse the identity-heavy deps into stable
+    // strings; the underlying arrays are intentionally not in the dep list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerKey, clusterKey, edgeKey])
+
+  // Sync memoised build into refs for the animation loop + reset selection
+  // when the node set shrinks below the selected index.
+  useEffect(() => {
+    nodesRef.current = graphBuild.nodes
+    edgesRef.current = graphBuild.edges
+    clusterColorsRef.current = graphBuild.colors
+    edgeWeightTotalRef.current = graphBuild.weightTotal
+    if (selectedRef.current >= graphBuild.nodes.length) {
       selectedRef.current = -1
       connectedRef.current = new Set()
       setSel(null)
     }
-  }, [peers])
+  }, [graphBuild])
 
   // Event log from real messages
   useEffect(() => {
@@ -292,11 +465,26 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
     const sigs: Sig[] = []
     let lastSpawn = 0
 
+    // Weighted edge pick, biased by edge.weight so hot edges pulse more.
+    function pickEdgeIndex(): number {
+      const edges = edgesRef.current
+      if (edges.length === 0) return -1
+      const total = edgeWeightTotalRef.current
+      if (total <= 0) return Math.floor(Math.random() * edges.length)
+      let r = Math.random() * total
+      for (let i = 0; i < edges.length; i++) {
+        r -= edges[i].weight
+        if (r <= 0) return i
+      }
+      return edges.length - 1
+    }
+
     function loop(ts: number) {
       rafRef.current = requestAnimationFrame(loop)
       const t = ts / 1000
       const nodes = nodesRef.current
       const edges = edgesRef.current
+      const colors = clusterColorsRef.current
 
       if (!dragRef.current.active) {
         velRef.current.y *= 0.965
@@ -304,9 +492,12 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
         rotRef.current.y += velRef.current.y + 0.0005
       }
 
-      // Spawn signals
+      // Spawn signals (biased by weight)
       if (edges.length > 0 && ts - lastSpawn > 180) {
-        sigs.push({ ei: Math.floor(Math.random() * edges.length), t: 0, spd: 0.006 + Math.random() * 0.012 })
+        const ei = pickEdgeIndex()
+        if (ei >= 0) {
+          sigs.push({ ei, t: 0, spd: 0.006 + Math.random() * 0.012 })
+        }
         lastSpawn = ts
         if (sigs.length > 40) sigs.shift()
       }
@@ -340,7 +531,7 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
       ctx.fillStyle = haze
       ctx.fillRect(0, 0, cW, H)
 
-      const sel = selectedRef.current
+      const selId = selectedRef.current
 
       // Edges
       for (const e of edges) {
@@ -348,18 +539,34 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
         if (!na || !nb) continue
         if (na.sx < -500 || nb.sx < -500) continue
         const avg = (na.sc + nb.sc) * 0.5
-        const isConnected = sel >= 0 && (e.a === sel || e.b === sel)
-        const dim = sel >= 0 && !isConnected ? 0.07 : 1
-        let alpha = Math.min(0.22, avg * 0.3) * dim
-        if (isConnected) alpha = Math.min(0.9, alpha * 5)
+        const isConnected = selId >= 0 && (e.a === selId || e.b === selId)
+        const dim = selId >= 0 && !isConnected ? 0.07 : 1
+        let alpha =
+          Math.min(0.28, avg * 0.3 * (0.5 + Math.min(1.5, e.weight * 0.6))) * dim
+        if (e.intra) alpha *= 0.45
+        if (isConnected) alpha = Math.min(0.95, alpha * 5)
         if (alpha < 0.005) continue
+
+        let strokeColor: string
+        if (e.crossCluster) {
+          strokeColor = `rgba(180,230,255,${alpha})`
+        } else if (na.clusterId && colors.has(na.clusterId)) {
+          const c = colors.get(na.clusterId)!
+          strokeColor = `hsla(${c.h}, ${c.s}%, ${c.l}%, ${alpha})`
+        } else {
+          strokeColor = `rgba(255,255,255,${alpha})`
+        }
+
+        const widthBase = Math.max(0.5, Math.min(2.5, e.weight * 0.6))
+        const lw = isConnected
+          ? Math.max(1, widthBase * 1.4 * Math.max(0.6, avg))
+          : Math.max(0.3, widthBase * Math.max(0.4, avg))
+
         ctx.beginPath()
         ctx.moveTo(na.sx, na.sy)
         ctx.lineTo(nb.sx, nb.sy)
-        ctx.strokeStyle = isConnected
-          ? `rgba(200,225,255,${alpha})`
-          : `rgba(255,255,255,${alpha})`
-        ctx.lineWidth = isConnected ? Math.max(1, avg * 1.4) : Math.max(0.3, avg * 0.5)
+        ctx.strokeStyle = strokeColor
+        ctx.lineWidth = lw
         ctx.stroke()
       }
 
@@ -383,25 +590,40 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
       const sorted = [...nodes].sort((a, b) => a.sc - b.sc)
       for (const n of sorted) {
         if (n.sx < -200 || n.sx > cW + 200 || n.sy < -200 || n.sy > H + 200) continue
-        const isSelected = sel === n.id
-        const isConnected = sel >= 0 && connectedRef.current.has(n.id)
-        const focused = sel < 0 || isSelected || isConnected
+        const isSelected = selId === n.id
+        const isConnected = selId >= 0 && connectedRef.current.has(n.id)
+        const focused = selId < 0 || isSelected || isConnected
         const dim = focused ? 1 : 0.14
         let r = n.baseR * n.sc + (isSelected ? 3 : 0)
         if (n.flash > 0) r *= 1.25
         r = Math.max(0.9, r)
         const depth = Math.max(0.3, Math.min(1, n.sc * 1.5))
+
+        const col = n.clusterId ? colors.get(n.clusterId) : undefined
+
         // Halo
         const haloR = r * 3.6
         const halo = ctx.createRadialGradient(n.sx, n.sy, r * 0.6, n.sx, n.sy, haloR)
-        halo.addColorStop(0, `rgba(220,238,255,${0.26 * depth * dim})`)
-        halo.addColorStop(1, 'rgba(200,220,255,0)')
+        if (col) {
+          halo.addColorStop(0, `hsla(${col.h}, ${col.s}%, ${Math.min(85, col.l + 15)}%, ${0.32 * depth * dim})`)
+          halo.addColorStop(1, `hsla(${col.h}, ${col.s}%, ${col.l}%, 0)`)
+        } else {
+          halo.addColorStop(0, `rgba(220,238,255,${0.26 * depth * dim})`)
+          halo.addColorStop(1, 'rgba(200,220,255,0)')
+        }
         ctx.beginPath(); ctx.arc(n.sx, n.sy, haloR, 0, Math.PI * 2); ctx.fillStyle = halo; ctx.fill()
+
         // Sphere
         const sph = ctx.createRadialGradient(n.sx - r * 0.3, n.sy - r * 0.3, 0, n.sx, n.sy, r)
-        sph.addColorStop(0, `rgba(255,255,255,${depth * dim})`)
-        sph.addColorStop(0.5, `rgba(200,225,255,${0.7 * depth * dim})`)
-        sph.addColorStop(1, 'rgba(120,160,220,0)')
+        if (col) {
+          sph.addColorStop(0, `hsla(0, 0%, 100%, ${depth * dim})`)
+          sph.addColorStop(0.5, `hsla(${col.h}, ${col.s}%, ${Math.min(80, col.l + 10)}%, ${0.8 * depth * dim})`)
+          sph.addColorStop(1, `hsla(${col.h}, ${col.s}%, ${Math.max(30, col.l - 20)}%, 0)`)
+        } else {
+          sph.addColorStop(0, `rgba(255,255,255,${depth * dim})`)
+          sph.addColorStop(0.5, `rgba(200,225,255,${0.7 * depth * dim})`)
+          sph.addColorStop(1, 'rgba(120,160,220,0)')
+        }
         ctx.beginPath(); ctx.arc(n.sx, n.sy, r, 0, Math.PI * 2); ctx.fillStyle = sph; ctx.fill()
 
         if (isSelected) {
@@ -441,6 +663,26 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
   }, [])
 
   const showEmpty = peers.length === 0
+  const selectedClusterColor = sel?.clusterId ? clusterColor(sel.clusterId) : undefined
+  const selectedClusterLabel = sel?.clusterId
+    ? clusters.find((c) => c.id === sel.clusterId)?.label ?? sel.clusterId
+    : null
+
+  const jobsObserved = clustersStats?.total_jobs_observed ?? 0
+  const clustersOffline = !showEmpty && clustersMode === 'offline'
+
+  // Legend rows: only clusters that have peers present in the current set.
+  const legendRows = useMemo(() => {
+    const present = new Set(peers.map((p) => p.peer_id))
+    return clusters
+      .map((c) => ({
+        id: c.id,
+        label: c.label,
+        count: c.peer_ids.filter((pid) => present.has(pid)).length,
+      }))
+      .filter((c) => c.count > 0)
+      .sort((a, b) => b.count - a.count)
+  }, [clusters, peers])
 
   return (
     <div
@@ -524,14 +766,25 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
               letterSpacing: '0.3em',
               textTransform: 'uppercase',
               marginBottom: 12,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: 8,
             }}
           >
-            Chorus Network Monitor
+            <span>Chorus Network Monitor</span>
+            {clustersOffline && (
+              <span style={{ color: 'rgba(220,150,150,0.55)', letterSpacing: '0.2em' }}>
+                clusters offline
+              </span>
+            )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px 12px' }}>
             <Stat label="PEERS" value={peers.length.toString()} />
-            <Stat label="EDGES" value={edgesRef.current.length.toString()} />
+            <Stat label="CLUSTERS" value={legendRows.length.toString()} />
+            <Stat label="EDGES" value={graphBuild.edges.length.toString()} />
             <Stat label="MODELS" value={new Set(peers.map((p) => p.model)).size.toString()} />
+            <Stat label="JOBS" value={jobsObserved.toString()} />
             <Stat label="EVENTS" value={evts.length.toString()} />
           </div>
         </div>
@@ -555,6 +808,40 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
             <Divider />
             <Row k="Model" v={sel.model} />
             <Row k="Address" v={sel.address ?? '—'} />
+            <div>
+              <Label>CLUSTER</Label>
+              <div
+                style={{
+                  marginTop: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: selectedClusterColor
+                      ? `hsl(${selectedClusterColor.h} ${selectedClusterColor.s}% ${selectedClusterColor.l}%)`
+                      : 'rgba(255,255,255,0.25)',
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: 'var(--font-geist-mono)',
+                    fontSize: 10,
+                    color: 'rgba(255,255,255,0.72)',
+                    wordBreak: 'break-all',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {selectedClusterLabel ?? '—'}
+                </span>
+              </div>
+            </div>
             <Row k="Connections" v={String(sel.conns)} />
             <Divider />
             <div>
@@ -634,6 +921,60 @@ export default function NodeGraph3D({ peers, messages = [], onOpenFeed }: NodeGr
                 </span>
               )}
             </div>
+
+            {legendRows.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Label>CLUSTER LEGEND</Label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                  {legendRows.map((row) => {
+                    const c = clusterColor(row.id)
+                    return (
+                      <div
+                        key={row.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            background: `hsl(${c.h} ${c.s}% ${c.l}%)`,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-geist-mono)',
+                            fontSize: 9,
+                            color: 'rgba(255,255,255,0.72)',
+                            flex: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {row.label}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-geist-mono)',
+                            fontSize: 8,
+                            color: 'rgba(255,255,255,0.35)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {row.count}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

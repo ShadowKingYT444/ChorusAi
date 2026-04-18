@@ -6,7 +6,7 @@ import { ChorusSidebar } from './sidebar'
 import { ChorusTopBar } from './top-bar'
 import { ChorusComposer } from './composer'
 import { ChorusWelcome } from './welcome'
-import { ChorusChatStream, type ChatTurn } from './chat-stream'
+import { ChorusChatStream, type AgentResponse, type ChatTurn } from './chat-stream'
 import { useNetworkStatus } from '@/hooks/use-network-status'
 import {
   createJob,
@@ -16,6 +16,7 @@ import {
 } from '@/lib/api/orchestrator'
 import { writeSimulationSession } from '@/lib/runtime/session'
 import { getChat, upsertChat } from '@/lib/runtime/chat-history'
+import { useJobWebSocket } from '@/lib/runtime/use-job-websocket'
 
 const ACTIVE_CHAT_KEY = 'chorus_active_chat_id'
 
@@ -116,6 +117,9 @@ export function ChorusAppShell() {
   const [sending, setSending] = useState(false)
   const [title, setTitle] = useState('New conversation')
   const [error, setError] = useState<string | null>(null)
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
+  const currentTurnIdRef = useRef<string | null>(null)
+  const jobWs = useJobWebSocket(currentJobId)
 
   const readyPeerCount = status.peers.filter((peer) => Boolean(peer.address?.trim())).length
   const maxVoices = Math.max(status.online, AUTO_FILL_MAX_VOICES)
@@ -206,6 +210,59 @@ export function ChorusAppShell() {
     }
   }, [])
 
+  // Merge live WS state into the active chorus turn so the prompt tab
+  // shows responses inline instead of routing to /app.
+  useEffect(() => {
+    const turnId = currentTurnIdRef.current
+    if (!turnId) return
+    setTurns((prev) =>
+      prev.map((turn) => {
+        if (turn.id !== turnId) return turn
+        const baseResponses = turn.responses ?? []
+        const responses: AgentResponse[] = baseResponses.map((r) => ({ ...r }))
+        const indexByPeer = new Map(responses.map((r, i) => [r.peerId, i]))
+        for (const line of jobWs.lines) {
+          const peerId = line.slotId.split('#')[0] ?? line.slotId
+          const idx = indexByPeer.get(peerId)
+          const status: AgentResponse['status'] =
+            line.status === 'pruned' ? 'error' : 'done'
+          if (idx == null) {
+            indexByPeer.set(peerId, responses.length)
+            responses.push({
+              peerId,
+              model: 'unknown',
+              text: line.snippet,
+              latencyMs: line.latencyMs,
+              status,
+            })
+          } else {
+            responses[idx] = {
+              ...responses[idx],
+              text: line.snippet,
+              latencyMs: line.latencyMs,
+              status,
+            }
+          }
+        }
+        const consensus = jobWs.finalAnswer ?? turn.consensus
+        const sameResponses =
+          responses.length === baseResponses.length &&
+          responses.every((r, i) => {
+            const old = baseResponses[i]
+            return (
+              old &&
+              old.peerId === r.peerId &&
+              old.text === r.text &&
+              old.status === r.status &&
+              old.latencyMs === r.latencyMs
+            )
+          })
+        if (sameResponses && consensus === turn.consensus) return turn
+        return { ...turn, responses, consensus }
+      }),
+    )
+  }, [jobWs.lines, jobWs.finalAnswer])
+
   const send = useCallback(async () => {
     if (!draft.trim() || sending) return
 
@@ -256,8 +313,33 @@ export function ChorusAppShell() {
         createdAt: new Date().toISOString(),
         launchedPeers: launchPlan.participants.map((participant) => participant.peer),
       })
+
+      const now = Date.now()
+      const userTurnId = `u-${now}-${Math.random().toString(36).slice(2, 8)}`
+      const chorusTurnId = `c-${now}-${Math.random().toString(36).slice(2, 8)}`
+      const initialResponses: AgentResponse[] = launchPlan.participants.map(
+        (participant) => ({
+          peerId: participant.peer.peer_id,
+          model: participant.peer.model ?? 'unknown',
+          text: '',
+          status: 'thinking' as const,
+        }),
+      )
+
+      setTurns((prev) => [
+        ...prev,
+        { id: userTurnId, role: 'user', text: prompt, createdAt: now },
+        {
+          id: chorusTurnId,
+          role: 'chorus',
+          voicesRequested: launchPlan.participants.length,
+          responses: initialResponses,
+          createdAt: now + 1,
+        },
+      ])
+      currentTurnIdRef.current = chorusTurnId
+      setCurrentJobId(created.job_id)
       setDraft('')
-      router.push(`/app?job_id=${encodeURIComponent(created.job_id)}`)
     } catch (launchError) {
       setError(launchError instanceof Error ? launchError.message : 'Launch failed')
     } finally {
