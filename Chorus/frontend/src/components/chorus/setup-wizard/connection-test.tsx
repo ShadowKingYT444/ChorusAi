@@ -215,8 +215,10 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
             setTip(
               [
                 proxyContext ? `Proxy note: ${proxyContext}` : '',
-                'The browser reached your tunnel, but Ollama still rejected the request or the tunnel forwarded somewhere else.',
-                'Confirm Ollama is running, the tunnel points at port 11434, and OLLAMA_ORIGINS includes this Chorus UI origin.',
+                'The browser reached your tunnel, but Ollama still rejected the request.',
+                directRes.status === 403
+                  ? 'HTTP 403 almost always means ngrok is not rewriting the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 — Ollama blocks tunnel hostnames by default to prevent DNS rebinding.'
+                  : 'Confirm Ollama is running, the tunnel points at port 11434, and OLLAMA_ORIGINS includes this Chorus UI origin.',
               ]
                 .filter(Boolean)
                 .join(' '),
@@ -265,6 +267,11 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         }
         setPhase('error')
         setMessage(`HTTP ${res.status}: ${proxyError}`)
+        if (res.status === 403) {
+          setTip(
+            'Ollama returned 403. This is DNS-rebinding protection — ngrok must rewrite the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 (paste the new URL above, then retest).',
+          )
+        }
         onResult?.(false)
         return
       }

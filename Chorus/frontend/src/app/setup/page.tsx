@@ -653,7 +653,7 @@ export default function SetupPage() {
         </div>
         {tunnelProvider === 'ngrok' ? (
           <>
-            <CodeBlock code="ngrok http 11434" label="shell" />
+            <CodeBlock code="ngrok http 11434 --host-header=localhost:11434" label="shell" />
             <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
               Don&apos;t have ngrok?{' '}
               <a
@@ -664,6 +664,9 @@ export default function SetupPage() {
               >
                 Install it →
               </a>{' '}
+              The <code>--host-header=localhost:11434</code> flag is required — it rewrites the
+              Host header so Ollama&apos;s DNS-rebinding protection accepts the request. Without it
+              you will get <code>403 Forbidden</code> even with a correct <code>OLLAMA_ORIGINS</code>.
               Look for the <code>Forwarding</code> line — the https URL ends in{' '}
               <code>.ngrok-free.dev</code> or <code>.ngrok-free.app</code> (varies by ngrok
               version). Copy that full https URL into the field below. Do NOT include a path.
