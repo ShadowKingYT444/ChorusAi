@@ -5,8 +5,8 @@ import { useCallback, useState } from 'react'
 import { isLoopbackOllamaHost, isPrivateLanIpv4 } from '@/lib/lan/chat-proxy-allow'
 import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
 
-// Note: tunnel mode now routes through /api/local-chat-completions server-side
-// to avoid CORS issues and ngrok interstitial pages.
+// Tunnel mode prefers the same-origin proxy first, then falls back to a direct
+// browser call when the proxy path cannot use the supplied public URL.
 import { setSavedModelVerified } from '@/lib/api/orchestrator'
 
 export type TestMode = 'lan' | 'tunnel'
@@ -36,6 +36,15 @@ function extractErrorMessage(raw: string): string {
     /* fall through */
   }
   return raw.slice(0, 400)
+}
+
+function extractCompletionText(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as ChatCompletionShape
+    return parsed.choices?.[0]?.message?.content?.trim() ?? '(empty)'
+  } catch {
+    return '(empty)'
+  }
 }
 
 export function ConnectionTest({ mode, target, model, onResult }: Props) {
@@ -143,8 +152,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
           onResult?.(false)
           return
         }
-        const parsed = JSON.parse(raw) as ChatCompletionShape
-        const text = parsed.choices?.[0]?.message?.content?.trim() ?? '(empty)'
+        const text = extractCompletionText(raw)
         setPhase('ok')
         setMessage(text)
         setSavedModelVerified(true)
@@ -159,6 +167,90 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
 
       // tunnel mode — route through server-side proxy to avoid CORS / ngrok interstitial
       const tunnelBase = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+      const completionUrl = normalizeOpenAIChatCompletionsUrl(tunnelBase)
+      if (!completionUrl) {
+        setPhase('error')
+        setMessage('Invalid tunnel URL.')
+        setTip('Paste the full public HTTPS URL from ngrok or cloudflared.')
+        onResult?.(false)
+        return
+      }
+
+      let tunnelHost: string
+      try {
+        tunnelHost = new URL(completionUrl).hostname
+      } catch {
+        setPhase('error')
+        setMessage('Invalid tunnel URL.')
+        setTip('Paste the full public HTTPS URL from ngrok or cloudflared.')
+        onResult?.(false)
+        return
+      }
+
+      if (isLoopbackOllamaHost(tunnelHost) || isPrivateLanIpv4(tunnelHost)) {
+        setPhase('error')
+        setMessage(`Tunnel mode expects the public HTTPS tunnel URL, not ${tunnelHost}.`)
+        setTip(
+          [
+            'Run ngrok or cloudflared on the Ollama machine and paste the public URL it prints.',
+            'Examples: `https://abc-123.ngrok-free.app` or `https://random-words.trycloudflare.com`.',
+            'Do not paste `http://127.0.0.1:11434` or a `192.168.x.x` address in tunnel mode.',
+          ].join(' '),
+        )
+        onResult?.(false)
+        return
+      }
+
+      const runDirectTunnelCall = async (proxyContext?: string) => {
+        try {
+          const directRes = await fetch(completionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          const directRaw = await directRes.text()
+          if (!directRes.ok) {
+            setPhase('error')
+            setMessage(`HTTP ${directRes.status}: ${extractErrorMessage(directRaw)}`)
+            setTip(
+              [
+                proxyContext ? `Proxy note: ${proxyContext}` : '',
+                'The browser reached your tunnel, but Ollama still rejected the request or the tunnel forwarded somewhere else.',
+                'Confirm Ollama is running, the tunnel points at port 11434, and OLLAMA_ORIGINS includes this Chorus UI origin.',
+              ]
+                .filter(Boolean)
+                .join(' '),
+            )
+            onResult?.(false)
+            return
+          }
+          setPhase('ok')
+          setMessage(extractCompletionText(directRaw))
+          setSavedModelVerified(true)
+          setTip(
+            proxyContext
+              ? 'Confirmed: the browser reached your tunnel directly even though the server-side proxy could not use it.'
+              : 'Confirmed: your tunnel is live and Ollama responded successfully.',
+          )
+          onResult?.(true)
+        } catch (directErr) {
+          const directMsg = directErr instanceof Error ? directErr.message : String(directErr)
+          setPhase('error')
+          setMessage(directMsg)
+          setTip(
+            [
+              proxyContext ? `Proxy note: ${proxyContext}` : '',
+              'The direct browser call failed, which usually means OLLAMA_ORIGINS is missing this Chorus UI origin or the tunnel is down.',
+              'Restart Ollama with OLLAMA_ORIGINS set to this site URL, then confirm the tunnel is still forwarding to localhost:11434.',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          )
+          setSavedModelVerified(false)
+          onResult?.(false)
+        }
+      }
+
       const res = await fetch('/api/local-chat-completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -166,27 +258,17 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       })
       const raw = await res.text()
       if (!res.ok) {
-        setPhase('error')
-        setMessage(`HTTP ${res.status}: ${extractErrorMessage(raw)}`)
-        if (res.status === 400 && /not allowed/i.test(raw)) {
-          setTip(
-            'The proxy rejected this URL. Make sure you pasted the full ngrok/cloudflared HTTPS URL (e.g. https://abc-123.ngrok-free.app).',
-          )
-        } else if (res.status === 502) {
-          setTip(
-            [
-              'The server could not reach Ollama through your tunnel.',
-              '1. Confirm ngrok/cloudflared is running and forwarding to localhost:11434.',
-              '2. Confirm Ollama is running (try: curl http://localhost:11434/api/tags).',
-              '3. If using ngrok free tier, make sure you are logged in (ngrok config add-authtoken).',
-            ].join(' '),
-          )
+        const proxyError = extractErrorMessage(raw)
+        if (res.status === 400 || res.status === 502 || res.status === 503) {
+          await runDirectTunnelCall(proxyError)
+          return
         }
+        setPhase('error')
+        setMessage(`HTTP ${res.status}: ${proxyError}`)
         onResult?.(false)
         return
       }
-      const parsed = JSON.parse(raw) as ChatCompletionShape
-      const text = parsed.choices?.[0]?.message?.content?.trim() ?? '(empty)'
+      const text = extractCompletionText(raw)
       setPhase('ok')
       setMessage(text)
       setSavedModelVerified(true)

@@ -35,9 +35,13 @@ import {
   setOrchestratorBaseOverride,
   suggestLocalOrchestratorBase,
 } from '@/lib/api/orchestrator'
+import { isLoopbackOllamaHost, isPrivateLanIpv4 } from '@/lib/lan/chat-proxy-allow'
+import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
 
 type PathMode = 'local' | 'tunnel'
 type TunnelProvider = 'ngrok' | 'cloudflared'
+
+const SETUP_TUNNEL_URL_KEY = 'chorus_setup_tunnel_url'
 
 interface ModelChoice {
   id: string
@@ -76,6 +80,17 @@ function deriveModelPublicUrl(mode: PathMode, lanIp: string, tunnelUrl: string):
   return /^https?:\/\//i.test(raw) ? raw : `http://${raw}:11434`
 }
 
+function isLocalModelBase(raw: string): boolean {
+  const normalized = normalizeOpenAIChatCompletionsUrl(raw)
+  if (!normalized) return false
+  try {
+    const host = new URL(normalized).hostname
+    return isLoopbackOllamaHost(host) || isPrivateLanIpv4(host)
+  } catch {
+    return false
+  }
+}
+
 export default function SetupPage() {
   const [mode, setMode] = useState<PathMode>('local')
   const [os, setOs] = useState<OsKey>('macos')
@@ -102,7 +117,10 @@ export default function SetupPage() {
     }
     const savedModel = readLocalStorage(MODEL_NAME_KEY)
     if (savedModel) setModel(savedModel)
-    const savedTunnel = readLocalStorage(MODEL_PUBLIC_URL_KEY)
+    const savedTunnelDraft = readLocalStorage(SETUP_TUNNEL_URL_KEY)
+    const savedPublicModelUrl = readLocalStorage(MODEL_PUBLIC_URL_KEY)
+    const savedTunnel =
+      savedTunnelDraft || (savedPublicModelUrl && !isLocalModelBase(savedPublicModelUrl) ? savedPublicModelUrl : '')
     if (savedTunnel) setTunnelUrl(savedTunnel)
     const savedIp = getSavedOllamaIp()
     if (savedIp) setLanIp(savedIp)
@@ -122,7 +140,7 @@ export default function SetupPage() {
 
   // Persist tunnel URL whenever it changes.
   useEffect(() => {
-    writeLocalStorage(MODEL_PUBLIC_URL_KEY, tunnelUrl)
+    writeLocalStorage(SETUP_TUNNEL_URL_KEY, tunnelUrl)
   }, [tunnelUrl])
 
   // Persist LAN IP whenever it changes.
