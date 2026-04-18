@@ -25,12 +25,15 @@ import { StepShell } from '@/components/chorus/setup-wizard/step-shell'
 import {
   MODEL_NAME_KEY,
   MODEL_PUBLIC_URL_KEY,
+  getEffectiveOrchestratorBase,
   getOrchestratorBaseOverride,
   getSavedOllamaIp,
   isSavedModelVerified,
+  normalizeOrchestratorBase,
   saveOllamaIp,
   setSavedModelVerified,
   setOrchestratorBaseOverride,
+  suggestLocalOrchestratorBase,
 } from '@/lib/api/orchestrator'
 
 type PathMode = 'local' | 'tunnel'
@@ -105,7 +108,8 @@ export default function SetupPage() {
     if (savedIp) setLanIp(savedIp)
     const override = getOrchestratorBaseOverride()
     const envBase = process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() ?? ''
-    const existingOrchestrator = override ?? envBase
+    const existingOrchestrator =
+      override ?? getEffectiveOrchestratorBase() ?? suggestLocalOrchestratorBase() ?? ''
     setOrchestratorBase(existingOrchestrator)
     // Track whether the value came from a baked-in env var (no override yet).
     setOrchestratorBaseFromEnv(!override && envBase.length > 0)
@@ -168,7 +172,11 @@ export default function SetupPage() {
 
   const onConnectOrchestrator = useCallback(() => {
     const v = orchestratorBase.trim()
-    setOrchestratorBaseOverride(v || null)
+    const normalized = v ? normalizeOrchestratorBase(v) : null
+    setOrchestratorBaseOverride(normalized)
+    if (normalized && normalized !== orchestratorBase) {
+      setOrchestratorBase(normalized)
+    }
     writeLocalStorage(MODEL_PUBLIC_URL_KEY, deriveModelPublicUrl(mode, lanIp, tunnelUrl))
   }, [lanIp, mode, orchestratorBase, tunnelUrl])
 
@@ -189,7 +197,7 @@ export default function SetupPage() {
     }
     setProbePhase('probing')
     setProbeMessage('')
-    const base = v.replace(/\/+$/, '')
+    const base = normalizeOrchestratorBase(v)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8000)
     try {

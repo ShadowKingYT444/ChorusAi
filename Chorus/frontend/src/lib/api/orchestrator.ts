@@ -233,7 +233,24 @@ export const MODEL_PUBLIC_URL_KEY = 'chorus_model_public_url'
 export const MODEL_NAME_KEY = 'chorus_model_name'
 export const MODEL_SETUP_VERIFIED_KEY = 'chorus_model_setup_verified'
 
-function normalizeOrchestratorBase(url: string): string {
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+}
+
+function isPrivateLanIpv4Host(host: string): boolean {
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+}
+
+function bareAuthorityHost(value: string): string {
+  const authority = value.split('/')[0]
+  if (authority.startsWith('[')) {
+    const end = authority.indexOf(']')
+    return end >= 0 ? authority.slice(1, end) : authority
+  }
+  return authority.split(':')[0]
+}
+
+export function normalizeOrchestratorBase(url: string): string {
   let s = url.trim().replace(/\/+$/, '')
   if (!s) return s
   // Add a scheme if missing. Bare domains/IPs would otherwise be treated as
@@ -241,12 +258,17 @@ function normalizeOrchestratorBase(url: string): string {
   // (which returns 404 for unrelated paths — the most common cause of
   // "/health 404" reports).
   if (!/^https?:\/\//i.test(s)) {
-    const host = s.split('/')[0]
-    const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1'
-    const isPrivateIpv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
-    s = `${isLoopback || isPrivateIpv4 ? 'http' : 'https'}://${s}`
+    const host = bareAuthorityHost(s)
+    s = `${isLoopbackHost(host) || isPrivateLanIpv4Host(host) ? 'http' : 'https'}://${s}`
   }
   return s
+}
+
+export function suggestLocalOrchestratorBase(): string | null {
+  if (typeof window === 'undefined') return null
+  const host = window.location.hostname.trim()
+  if (!host || (!isLoopbackHost(host) && !isPrivateLanIpv4Host(host))) return null
+  return normalizeOrchestratorBase(`${host}:8000`)
 }
 
 export function getOrchestratorBaseOverride(): string | null {

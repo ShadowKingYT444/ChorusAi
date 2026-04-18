@@ -10,6 +10,7 @@ import {
   isOrchestratorConfigured,
   openSignalingSocket,
   setOrchestratorBaseOverride,
+  suggestLocalOrchestratorBase,
   type PeerEntry,
   type SignalingServerEvent,
 } from '@/lib/api/orchestrator'
@@ -243,10 +244,10 @@ export default function JoinLanPage() {
   }, [workerInstanceId])
 
   useEffect(() => {
-    const env = process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim()
-    const session = getOrchestratorBaseOverride()
-    setBaseInput(session ?? env ?? '')
-    setShowAdvanced(!env && !session)
+    const initialBase =
+      getOrchestratorBaseOverride() ?? getEffectiveOrchestratorBase() ?? suggestLocalOrchestratorBase() ?? ''
+    setBaseInput(initialBase)
+    setShowAdvanced(!initialBase)
     setModelPublicUrl(
       typeof window !== 'undefined' ? localStorage.getItem(MODEL_PUBLIC_URL_KEY)?.trim() ?? '' : '',
     )
@@ -256,7 +257,7 @@ export default function JoinLanPage() {
     setHasCheckedSetup(true)
   }, [])
 
-  const effectiveBase = baseInput.trim() || process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() || null
+  const effectiveBase = baseInput.trim() || null
 
   const persistModelUrl = useCallback((url: string) => {
     const t = url.trim()
@@ -325,13 +326,19 @@ export default function JoinLanPage() {
   const join = useCallback(() => {
     setError(null)
     const trimmed = baseInput.trim()
+    const resolvedBase =
+      trimmed ||
+      getOrchestratorBaseOverride() ||
+      getEffectiveOrchestratorBase() ||
+      suggestLocalOrchestratorBase() ||
+      ''
     if (trimmed) setOrchestratorBaseOverride(trimmed)
-    else if (!getEffectiveOrchestratorBase()) {
+    else if (!resolvedBase) {
       setError('Enter the signaling server URL (e.g. http://192.168.1.10:8000).')
       return
     }
 
-    if (!getEffectiveOrchestratorBase()) {
+    if (!resolvedBase) {
       setError('No signaling URL configured.')
       return
     }
@@ -685,7 +692,7 @@ export default function JoinLanPage() {
             Saved in this browser and shared across tabs.
           </p>
 
-          {(showAdvanced || !process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim()) && (
+          {(showAdvanced || !effectiveBase) && (
             <>
               <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>
                 Signaling server (HTTP base)
@@ -712,7 +719,7 @@ export default function JoinLanPage() {
             </>
           )}
 
-          {!showAdvanced && process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() && (
+          {!showAdvanced && effectiveBase && (
             <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '1rem' }}>
               Using <span style={{ color: 'rgba(255,255,255,0.88)' }}>{effectiveBase}</span>
               <button

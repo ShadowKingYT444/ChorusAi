@@ -25,3 +25,5 @@ Thumbs.db
 # Project
 .swarm-state.json
 bin/
+.claude/
+Chorus/output/
