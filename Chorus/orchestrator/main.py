@@ -94,8 +94,11 @@ def _cors_middleware_kwargs() -> dict:
         r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
         r")(:[0-9]+)?$"
     )
+    # Default to allowing any *.vercel.app preview/production domain so a
+    # frontend deploy works without requiring ORC_CORS_ORIGIN_REGEX.
+    vercel_origin_regex = r"^https://([a-z0-9-]+\.)*vercel\.app$"
     extra = os.getenv("ORC_CORS_ORIGIN_REGEX", "").strip()
-    regex_parts = [local_origin_regex]
+    regex_parts = [local_origin_regex, vercel_origin_regex]
     if lan:
         regex_parts.append(lan_origin_regex)
     if extra:
@@ -140,9 +143,11 @@ def _make_plan(
             assignments=[],
         )
 
-    # Distribute ALL personas in the catalog across available peers (Round-Robin)
-    for i, persona in enumerate(persona_catalog):
-        peer_id = target_peer_ids[i % len(target_peer_ids)]
+    # One assignment per peer (cycling through personas if peers > catalog).
+    # Old behaviour iterated personas not peers, which caused duplicate work
+    # on the same peer or left peers idle.
+    for i, peer_id in enumerate(target_peer_ids):
+        persona = persona_catalog[i % len(persona_catalog)] if persona_catalog else ""
         assignments.append(
             BroadcastAssignment(
                 peer_id=peer_id,

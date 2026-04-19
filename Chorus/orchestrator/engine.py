@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import time
 from collections import Counter
 
+logger = logging.getLogger(__name__)
+
 import anyio
 import httpx
 
 from orchestrator.broadcast_completions import normalize_completion_url
+from orchestrator.demo_agent import is_demo_completion_base
 from orchestrator.embeddings import EmbeddingService
 from orchestrator.invoker import AgentInvoker, OLLAMA_MODEL
 from orchestrator.metrics import METRICS
@@ -85,8 +89,7 @@ class RoundEngine:
                     get_orchestrator_keypair(),
                 )
             except Exception:  # noqa: BLE001
-                # Receipt attachment is best-effort; never block settlement.
-                pass
+                logger.exception("receipt_attach_failed", extra={"job_id": job.job_id})
             await self.store.update_job(job)
             await self.store.emit(
                 job_id,
@@ -141,7 +144,7 @@ class RoundEngine:
                 )
             )
 
-        responses = [await task for task in call_tasks]
+        responses = await asyncio.gather(*call_tasks)
         texts = [resp.text.strip() for resp in responses if resp.text]
         dup_counts = Counter(texts)
 
@@ -262,9 +265,13 @@ class RoundEngine:
             target_url = normalize_completion_url(merge_url_env)
         else:
             for slot_id, slot in job.slots.items():
-                if slot.status != PruneStatus.pruned:
-                    target_url = normalize_completion_url(str(slot.registration.completion_base_url))
-                    break
+                if slot.status == PruneStatus.pruned:
+                    continue
+                base = str(slot.registration.completion_base_url)
+                if is_demo_completion_base(base):
+                    continue
+                target_url = normalize_completion_url(base)
+                break
 
         final_text: str | None = None
         if target_url is not None:

@@ -17,6 +17,8 @@ interface Props {
   onVoicesChange: (n: number) => void
   status: NetworkStatus
   maxVoices?: number
+  /** Peers with a usable completion endpoint. Send button only enables when > 0. */
+  readyPeerCount?: number
   placeholder?: string
 }
 
@@ -29,11 +31,13 @@ export function ChorusComposer({
   onVoicesChange,
   status,
   maxVoices,
+  readyPeerCount,
   placeholder = 'Ask the chorus…',
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const hasText = value.trim().length > 0
-  const canSend = hasText && !disabled && status.online > 0
+  const effectiveReady = readyPeerCount ?? status.online
+  const canSend = hasText && !disabled && effectiveReady > 0
 
   const autoSize = useCallback(() => {
     const el = ref.current
@@ -130,9 +134,9 @@ export function ChorusComposer({
 
       <div className="mt-2 text-center font-mono text-[10px] text-white/35 tracking-[0.08em]">
         {status.mode === 'live'
-          ? status.online > 0
-            ? `Network live · ${status.online} peer${status.online === 1 ? '' : 's'} online`
-            : 'Network live · waiting for peers to join'
+          ? effectiveReady > 0
+            ? `Network live · ${effectiveReady} peer${effectiveReady === 1 ? '' : 's'} ready`
+            : 'Network live · waiting for a peer to register an endpoint'
           : status.mode === 'unconfigured'
           ? 'No orchestrator set · open /setup to connect'
           : 'Orchestrator unreachable · check NEXT_PUBLIC_ORCHESTRATOR_BASE_URL'}

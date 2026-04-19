@@ -15,7 +15,7 @@ import {
   Plug,
   Radio,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CodeBlock } from '@/components/chorus/setup-wizard/code-block'
 import { ConnectionTest } from '@/components/chorus/setup-wizard/connection-test'
 import { OsTabs, detectOs, type OsKey } from '@/components/chorus/setup-wizard/os-tabs'
@@ -147,7 +147,14 @@ export default function SetupPage() {
   }, [lanIp])
 
   // Reset test state when key inputs change.
+  // Skip the initial run after hydration so we don't wipe a previously-verified
+  // setup the moment the page loads.
+  const hydratedRef = useRef(false)
   useEffect(() => {
+    if (!hydratedRef.current) {
+      hydratedRef.current = true
+      return
+    }
     setTestOk(false)
     setSavedModelVerified(false)
   }, [mode, lanIp, tunnelUrl, model])

@@ -9,6 +9,7 @@ export interface ChatRecord {
   createdAt: number
   updatedAt: number
   voices: number
+  rounds?: number
 }
 
 function emitChange() {

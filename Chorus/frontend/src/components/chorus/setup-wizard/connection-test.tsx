@@ -7,7 +7,18 @@ import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-ch
 
 // Tunnel mode prefers the same-origin proxy first, then falls back to a direct
 // browser call when the proxy path cannot use the supplied public URL.
-import { setSavedModelVerified } from '@/lib/api/orchestrator'
+import { MODEL_PUBLIC_URL_KEY, setSavedModelVerified } from '@/lib/api/orchestrator'
+
+function persistVerifiedModelBase(base: string): void {
+  if (typeof window === 'undefined') return
+  const trimmed = base.trim()
+  if (!trimmed) return
+  try {
+    localStorage.setItem(MODEL_PUBLIC_URL_KEY, trimmed)
+  } catch {
+    /* localStorage may be disabled — non-fatal */
+  }
+}
 
 export type TestMode = 'lan' | 'tunnel'
 export type TestPhase = 'idle' | 'running' | 'ok' | 'error'
@@ -156,6 +167,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         setPhase('ok')
         setMessage(text)
         setSavedModelVerified(true)
+        persistVerifiedModelBase(hostForBase)
         setTip(
           isLoopback
             ? 'Confirmed: Chorus can reach Ollama on this same computer.'
@@ -229,6 +241,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
           setPhase('ok')
           setMessage(extractCompletionText(directRaw))
           setSavedModelVerified(true)
+          persistVerifiedModelBase(tunnelBase)
           setTip(
             proxyContext
               ? 'Confirmed: the browser reached your tunnel directly even though the server-side proxy could not use it.'
@@ -279,6 +292,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
       setPhase('ok')
       setMessage(text)
       setSavedModelVerified(true)
+      persistVerifiedModelBase(tunnelBase)
       setTip('Confirmed: your tunnel is live and Ollama responded successfully.')
       onResult?.(true)
     } catch (err) {

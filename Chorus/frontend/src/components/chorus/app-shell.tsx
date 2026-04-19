@@ -88,6 +88,7 @@ export function ChorusAppShell() {
           setTurns(rec.turns)
           setTitle(rec.title)
           setVoices(Math.max(1, rec.voices))
+          if (typeof rec.rounds === 'number' && rec.rounds > 0) setRounds(rec.rounds)
           chatCreatedAtRef.current = rec.createdAt
         }
       }
@@ -117,13 +118,14 @@ export function ChorusAppShell() {
       createdAt,
       updatedAt: Date.now(),
       voices,
+      rounds,
     })
     try {
       window.localStorage.setItem(ACTIVE_CHAT_KEY, id)
     } catch {
       /* noop */
     }
-  }, [turns, activeChatId, title, voices])
+  }, [turns, activeChatId, title, voices, rounds])
 
   const newChat = useCallback(() => {
     setActiveChatId(null)
@@ -146,6 +148,7 @@ export function ChorusAppShell() {
     setTurns(rec.turns)
     setTitle(rec.title)
     setVoices(Math.max(1, rec.voices))
+    if (typeof rec.rounds === 'number' && rec.rounds > 0) setRounds(rec.rounds)
     setDraft('')
     setError(null)
     chatCreatedAtRef.current = rec.createdAt
@@ -356,6 +359,7 @@ export function ChorusAppShell() {
               onVoicesChange={setVoices}
               status={status}
               maxVoices={maxVoices}
+              readyPeerCount={readyPeerCount}
             />
           </div>
         </div>

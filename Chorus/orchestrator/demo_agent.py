@@ -336,7 +336,7 @@ async def invoke_demo_completion(
     start = perf_counter()
     await anyio.sleep(0.18 + rng.random() * 0.42)
     scripted = SCRIPTED_DEMO_ANSWERS.get(slot_id)
-    if scripted is not None and SCRIPTED_TRIGGER in job.spec.prompt.lower():
+    if scripted is not None and SCRIPTED_TRIGGER in job.spec.prompt.lower() and round_index <= 1:
         text = scripted
     else:
         text = _compose_demo_text(
