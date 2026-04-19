@@ -401,7 +401,7 @@ async def get_job_responses(job_id: str) -> dict:
 
 @app.get("/jobs/{job_id}/response-summary")
 async def get_job_response_summary(job_id: str) -> dict:
-    """Count buffered `job_response` rows — use to verify multiple workers per peer (`instance_id`)."""
+    """Count buffered `job_response` rows - use to verify multiple workers per peer (`instance_id`)."""
     buf = _job_response_buffer.get(job_id, [])
     by_peer: dict[str, int] = {}
     by_slot: dict[str, int] = {}

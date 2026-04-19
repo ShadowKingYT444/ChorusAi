@@ -283,7 +283,7 @@ def collate_pad(
 def train_val_split_n_val(n: int, val_fraction: float, *, min_val: int) -> int:
     """
     Validation count in ``[1, n - 1]``. For small ``n``, bumps val up to ``min_val`` so val loss is
-    not computed on 1–2 sequences (very noisy).
+    not computed on 1-2 sequences (very noisy).
     """
     if n < 2:
         raise ValueError("need at least 2 sequences")
@@ -546,7 +546,7 @@ def main() -> None:
     )
     if len(train_seq) < 200:
         print(
-            "Warning: very few training sequences — train loss will drop fast; val CE is only meaningful with enough val data.",
+            "Warning: very few training sequences - train loss will drop fast; val CE is only meaningful with enough val data.",
             flush=True,
         )
 

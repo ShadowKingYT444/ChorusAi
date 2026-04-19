@@ -453,7 +453,7 @@ def main() -> None:
         action="store_true",
         help=(
             "Use half the HF transformer depth (first num_hidden_layers//2 blocks, weights copied). "
-            "Ignored if --qwen-encoder-layers > 0. Default is OFF — without this flag you get the "
+            "Ignored if --qwen-encoder-layers > 0. Default is OFF - without this flag you get the "
             "full ~494M-param encoder."
         ),
     )
@@ -540,7 +540,7 @@ def main() -> None:
     print(
         f"Qwen encoder depth: num_hidden_layers={encoder.config.num_hidden_layers} "
         f"(Qwen2-0.5B full = 24). If this is 24, you did not pass --qwen-encoder-halve or "
-        f"--qwen-encoder-layers 12 — encoder stays full size (~494M params).",
+        f"--qwen-encoder-layers 12 - encoder stays full size (~494M params).",
         flush=True,
     )
     args._encoder_num_hidden_layers_effective = int(encoder.config.num_hidden_layers)
@@ -827,7 +827,7 @@ def main() -> None:
                 break
 
     except KeyboardInterrupt:
-        print("\nKeyboardInterrupt — saving current weights.", flush=True)
+        print("\nKeyboardInterrupt - saving current weights.", flush=True)
         cur_head = {k: v.detach().cpu() for k, v in model.state_dict().items()}
         cur_enc = None if args.freeze_encoder else {k: v.detach().cpu() for k, v in encoder.state_dict().items()}
         args.out.parent.mkdir(parents=True, exist_ok=True)

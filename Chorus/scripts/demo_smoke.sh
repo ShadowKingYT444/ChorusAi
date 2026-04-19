@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # demo_smoke.sh
 # Asserts orchestrator + echo agent + persistence work end-to-end.
-# Ollama is NOT required — smoke uses the echo fixture agent.
+# Ollama is NOT required - smoke uses the echo fixture agent.
 set -u
 
 cd "$(dirname "$0")/.."

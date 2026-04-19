@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Chorus — start all three services
+# Chorus - start all three services
 # Usage: ./start.sh
 # Stop:  Ctrl+C kills all background jobs
 

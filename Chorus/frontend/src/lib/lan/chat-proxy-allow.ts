@@ -11,7 +11,7 @@ const TUNNEL_HOSTNAME_PATTERNS = [
   /\.loca\.lt$/i,
 ]
 
-/** RFC1918 LAN (not 127.x — server-side proxy must not target loopback or it hits the wrong PC). */
+/** RFC1918 LAN (not 127.x - server-side proxy must not target loopback or it hits the wrong PC). */
 export function isPrivateLanIpv4(host: string): boolean {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
   if (!m) return false

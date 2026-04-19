@@ -66,7 +66,7 @@ async function replyWithLocalModel(opts: {
       job_id: jobId,
       peer_id: peerId,
       prompter_id: prompterId,
-      error: 'join:no_model_url — set Public model API base above',
+      error: 'join:no_model_url - set Public model API base above',
       latency_ms: 0,
     })
     return 'error'
@@ -155,7 +155,7 @@ async function replyWithLocalModel(opts: {
       }
       const errText = await proxyRes.text()
       if (proxyRes.status === 503) {
-        /* NEXT_LAN_CHAT_PROXY=0 — use browser only */
+        /* NEXT_LAN_CHAT_PROXY=0 - use browser only */
       } else {
         const tryBrowserFallback =
           proxyRes.status === 502 &&
@@ -453,7 +453,7 @@ export default function JoinLanPage() {
         }, 25_000)
       },
       onError: () => {
-        setError('WebSocket error — check URL, firewall, and that the host uses --host 0.0.0.0')
+        setError('WebSocket error - check URL, firewall, and that the host uses --host 0.0.0.0')
         setPhase('error')
         stopHeartbeat()
         try {
@@ -839,7 +839,7 @@ export default function JoinLanPage() {
             )}
             <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.38)', marginTop: '0.6rem', lineHeight: 1.45 }}>
               LAN IPs first use a same-origin Next proxy (no browser CORS). If the dev PC cannot reach Ollama (e.g.
-              ECONNREFUSED), the app retries from your browser — then set <code style={{ fontSize: '10px' }}>OLLAMA_ORIGINS</code>{' '}
+              ECONNREFUSED), the app retries from your browser - then set <code style={{ fontSize: '10px' }}>OLLAMA_ORIGINS</code>{' '}
               to{' '}
               <code style={{ fontSize: '10px' }}>{typeof window !== 'undefined' ? window.location.origin : 'http://…:3000'}</code>
               . Prefer fixing the network path so the Next PC can reach Ollama (<code style={{ fontSize: '10px' }}>OLLAMA_HOST=0.0.0.0</code> on the Ollama machine, firewall).{' '}
@@ -862,7 +862,7 @@ export default function JoinLanPage() {
             )}
           </div>
           <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.32)', marginTop: '0.25rem', lineHeight: 1.35 }}>
-            Each tab gets its own peer id (sessionStorage). The signaling server keeps one connection per id — multiple
+            Each tab gets its own peer id (sessionStorage). The signaling server keeps one connection per id - multiple
             tabs used to share localStorage and looked like a single peer.
           </div>
           <div style={{ marginBottom: '0.25rem' }}>Peers online: {peers.length}</div>

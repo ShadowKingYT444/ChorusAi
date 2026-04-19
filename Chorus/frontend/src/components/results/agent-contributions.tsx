@@ -64,7 +64,7 @@ function ContributionCard({ c }: { c: AgentContribution }) {
 
       <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/5">
         <Stat label="ROUNDS" value={String(c.roundsActive)} />
-        <Stat label="AVG MS" value={c.avgLatencyMs > 0 ? String(Math.round(c.avgLatencyMs)) : '—'} />
+        <Stat label="AVG MS" value={c.avgLatencyMs > 0 ? String(Math.round(c.avgLatencyMs)) : '-'} />
         <Stat
           label="V/S/P"
           value={`${c.validCount}/${c.suspectCount}/${c.prunedCount}`}

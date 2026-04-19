@@ -34,7 +34,7 @@ function upstreamConnectFailureMessage(err: unknown, completionUrl: string): str
   return [
     `Could not reach Ollama at ${completionUrl}.`,
     chain ? `Node: ${chain}.` : '',
-    'This request runs on the PC where Next.js runs (npm run dev), not in your browser — that machine must reach Ollama on the network.',
+    'This request runs on the PC where Next.js runs (npm run dev), not in your browser - that machine must reach Ollama on the network.',
     'On the Ollama PC: set OLLAMA_HOST=0.0.0.0 (Windows: system environment variable, then restart Ollama) so it listens on your LAN IP, not only 127.0.0.1.',
     'From the Next PC, test: curl or Invoke-WebRequest that same URL (GET /api/tags on the Ollama root is fine).',
     'If Next and Ollama are on the same PC but you used a LAN IP, Windows may still refuse the port until Ollama binds 0.0.0.0; allow TCP 11434 in Windows Firewall if prompted.',
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Proxy target not allowed. Allowed: RFC1918 LAN IPs (10.x / 172.16–31.x / 192.168.x), or tunnel hosts on *.ngrok-free.app/.dev, *.ngrok.app/.io/.dev, *.trycloudflare.com, *.loca.lt. Override with NEXT_CHAT_PROXY_EXTRA_HOSTS. For 127.0.0.1, the browser calls Ollama directly — make sure OLLAMA_ORIGINS includes this UI origin.',
+          'Proxy target not allowed. Allowed: RFC1918 LAN IPs (10.x / 172.16-31.x / 192.168.x), or tunnel hosts on *.ngrok-free.app/.dev, *.ngrok.app/.io/.dev, *.trycloudflare.com, *.loca.lt. Override with NEXT_CHAT_PROXY_EXTRA_HOSTS. For 127.0.0.1, the browser calls Ollama directly - make sure OLLAMA_ORIGINS includes this UI origin.',
       },
       { status: 400 },
     )
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid OpenAI body.' }, { status: 400 })
   }
 
-  // Build headers — forward browser Origin so Ollama's CORS check passes,
+  // Build headers - forward browser Origin so Ollama's CORS check passes,
   // and add ngrok bypass header for tunnel URLs.
   const upstreamHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
   const incomingOrigin = req.headers.get('origin')

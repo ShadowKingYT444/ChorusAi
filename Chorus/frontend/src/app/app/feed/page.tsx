@@ -210,7 +210,7 @@ function FeedPageContent() {
               </div>
             </div>
 
-            {/* Stat row — Deployed Agents + Rounds */}
+            {/* Stat row - Deployed Agents + Rounds */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                 <div className="font-mono text-[9px] text-white/30 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -238,7 +238,7 @@ function FeedPageContent() {
               </div>
             </div>
 
-            {/* Fleet Status + Compute Node — compact 2-col */}
+            {/* Fleet Status + Compute Node - compact 2-col */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                 <div className="font-mono text-[9px] text-white/30 uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -325,7 +325,7 @@ function FeedPageContent() {
               </div>
             )}
 
-            {/* Cluster Activity — 3 animated waveform cards */}
+            {/* Cluster Activity - 3 animated waveform cards */}
             <ClusterActivity />
 
             <div className="mt-auto pt-6 border-t border-white/5 font-mono text-[10px] text-white/20 tracking-wider flex justify-between">

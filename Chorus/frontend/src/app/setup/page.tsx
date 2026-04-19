@@ -233,7 +233,7 @@ export default function SetupPage() {
         setProbePhase('error')
         if (res.status === 404) {
           setProbeMessage(
-            `Health check returned 404. The URL is reachable but ${base}/health doesn't exist on it. Most common cause: you pasted the Vercel frontend URL by mistake. The orchestrator URL is the Railway one (e.g. https://your-app.up.railway.app), NOT the Vercel one. Open ${base}/health directly in a browser tab — if you don't see {"status":"ok"}, this isn't a Chorus orchestrator.`,
+            `Health check returned 404. The URL is reachable but ${base}/health doesn't exist on it. Most common cause: you pasted the Vercel frontend URL by mistake. The orchestrator URL is the Railway one (e.g. https://your-app.up.railway.app), NOT the Vercel one. Open ${base}/health directly in a browser tab - if you don't see {"status":"ok"}, this isn't a Chorus orchestrator.`,
           )
         } else if (res.status === 503) {
           setProbeMessage(
@@ -282,7 +282,7 @@ export default function SetupPage() {
     },
     windows: {
       code: '# Download the installer, then run it\nstart https://ollama.com/download/OllamaSetup.exe',
-      note: 'After installing, launch Ollama — you should see the llama icon in your system tray.',
+      note: 'After installing, launch Ollama - you should see the llama icon in your system tray.',
     },
     linux: {
       code: 'curl -fsSL https://ollama.com/install.sh | sh',
@@ -291,15 +291,15 @@ export default function SetupPage() {
   }
 
   const TRAY_WARNING =
-    "Don't rely on the system-tray Ollama for env vars — on Windows and macOS the tray app frequently keeps stale environment values from the user's login session. Use `ollama serve` in a terminal instead. The terminal will show OLLAMA_ORIGINS in its boot log so you can confirm the value is live."
+    "Don't rely on the system-tray Ollama for env vars - on Windows and macOS the tray app frequently keeps stale environment values from the user's login session. Use `ollama serve` in a terminal instead. The terminal will show OLLAMA_ORIGINS in its boot log so you can confirm the value is live."
 
   const networkCommandsLan: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: '# Quit any tray Ollama first (menu bar → Quit), then in Terminal:\nOLLAMA_HOST=0.0.0.0 ollama serve\n# Leave this terminal open — Ollama runs here. Boot log should show:\n#   "OLLAMA_HOST: 0.0.0.0"',
+      code: '# Quit any tray Ollama first (menu bar → Quit), then in Terminal:\nOLLAMA_HOST=0.0.0.0 ollama serve\n# Leave this terminal open - Ollama runs here. Boot log should show:\n#   "OLLAMA_HOST: 0.0.0.0"',
       note: TRAY_WARNING,
     },
     windows: {
-      code: '# In PowerShell. Kill ALL Ollama processes (tray + runners), then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve\n# Leave this PowerShell window open — Ollama runs here.\n# Boot log should show: "OLLAMA_HOST: 0.0.0.0"',
+      code: '# In PowerShell. Kill ALL Ollama processes (tray + runners), then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve\n# Leave this PowerShell window open - Ollama runs here.\n# Boot log should show: "OLLAMA_HOST: 0.0.0.0"',
       note: TRAY_WARNING,
     },
     linux: {
@@ -310,11 +310,11 @@ export default function SetupPage() {
 
   const networkCommandsTunnel: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: `# Terminal #1 — Ollama. Quit tray app first (menu bar → Quit).\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve\n# Keep this terminal open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
+      code: `# Terminal #1 - Ollama. Quit tray app first (menu bar → Quit).\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve\n# Keep this terminal open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
       note: TRAY_WARNING,
     },
     windows: {
-      code: `# PowerShell #1 — Ollama. Kill tray + runners, then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Keep this window open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
+      code: `# PowerShell #1 - Ollama. Kill tray + runners, then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Keep this window open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
       note: TRAY_WARNING,
     },
     linux: {
@@ -380,7 +380,7 @@ export default function SetupPage() {
               icon={<Home size={16} />}
               title="Same machine or LAN"
               description="Ollama is on this machine (use 127.0.0.1) or another device on your local network (use its 192.168.x.x address)."
-              hint="Default — detected localhost."
+              hint="Default - detected localhost."
             />
           )}
           <PathCard
@@ -389,7 +389,7 @@ export default function SetupPage() {
             icon={<Cloud size={16} />}
             title="Remote access via tunnel"
             description="Expose your local Ollama to the internet with ngrok or cloudflared so Chorus can reach it from anywhere."
-            hint={isDeployedHost() ? 'Required — you are on a hosted instance.' : undefined}
+            hint={isDeployedHost() ? 'Required - you are on a hosted instance.' : undefined}
           />
         </div>
       </StepShell>
@@ -502,7 +502,7 @@ export default function SetupPage() {
         </div>
         <CodeBlock code={`ollama pull ${model}`} label="shell" />
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
-          This downloads the weights. First pull can take a few minutes — subsequent runs are instant.
+          This downloads the weights. First pull can take a few minutes - subsequent runs are instant.
         </p>
       </StepShell>
     ),
@@ -615,7 +615,7 @@ export default function SetupPage() {
           }}
         >
           <div style={{ fontWeight: 600, color: 'rgba(255,235,200,0.96)', marginBottom: 4 }}>
-            Two terminals — don&apos;t close the first one
+            Two terminals - don&apos;t close the first one
           </div>
           <div>
             Terminal #1 keeps running <code>ollama serve</code> from the previous step. Open a brand
@@ -669,10 +669,10 @@ export default function SetupPage() {
               >
                 Install it →
               </a>{' '}
-              The <code>--host-header=localhost:11434</code> flag is required — it rewrites the
+              The <code>--host-header=localhost:11434</code> flag is required - it rewrites the
               Host header so Ollama&apos;s DNS-rebinding protection accepts the request. Without it
               you will get <code>403 Forbidden</code> even with a correct <code>OLLAMA_ORIGINS</code>.
-              Look for the <code>Forwarding</code> line — the https URL ends in{' '}
+              Look for the <code>Forwarding</code> line - the https URL ends in{' '}
               <code>.ngrok-free.dev</code> or <code>.ngrok-free.app</code> (varies by ngrok
               version). Copy that full https URL into the field below. Do NOT include a path.
             </p>

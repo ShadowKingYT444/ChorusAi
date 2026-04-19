@@ -71,7 +71,7 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ─── Radar ping (CSS — off main thread) ───────────────────────────────────── */
+/* ─── Radar ping (CSS - off main thread) ───────────────────────────────────── */
 @keyframes radar-blip {
   0%, 100% { opacity: 0; }
   50%       { opacity: 1; }

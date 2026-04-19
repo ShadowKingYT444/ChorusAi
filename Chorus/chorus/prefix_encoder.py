@@ -3,7 +3,7 @@ Prefix text → 384-d vector for ``AutoregPredictor``.
 
 - **sentence**: SentenceTransformer pooled sentence embedding (original).
 - **token_last**: last-layer hidden state at the **last real token** (contextual token
-  representation of the full prefix), L2-normalized — *not* one vector per BPE target id;
+  representation of the full prefix), L2-normalized - *not* one vector per BPE target id;
   the backbone uses its own (WordPiece) tokenization of the prefix string.
 """
 
@@ -110,7 +110,7 @@ class SentencePrefixEncoder:
 
 
 class TokenLastPrefixEncoder:
-    """Last transformer layer, last non-pad token — contextual embedding of the prefix."""
+    """Last transformer layer, last non-pad token - contextual embedding of the prefix."""
 
     def __init__(self, model_id: str, device: torch.device) -> None:
         from transformers import AutoModel, AutoTokenizer

@@ -16,7 +16,7 @@ function persistVerifiedModelBase(base: string): void {
   try {
     localStorage.setItem(MODEL_PUBLIC_URL_KEY, trimmed)
   } catch {
-    /* localStorage may be disabled — non-fatal */
+    /* localStorage may be disabled - non-fatal */
   }
 }
 
@@ -108,7 +108,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         const isLoopback = isLoopbackOllamaHost(host)
         const isLan = isPrivateLanIpv4(host)
 
-        // Block loopback/LAN on deployed hosts — the proxy runs on Vercel, not the user's PC.
+        // Block loopback/LAN on deployed hosts - the proxy runs on Vercel, not the user's PC.
         if (isDeployed && (isLoopback || isLan)) {
           setPhase('error')
           setMessage(
@@ -118,9 +118,9 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
           )
           setTip(
             [
-              'You are on a deployed Chorus instance — the connection test runs on a remote server that cannot reach your local machine.',
+              'You are on a deployed Chorus instance - the connection test runs on a remote server that cannot reach your local machine.',
               'To connect your local Ollama, go back and select "Remote access via tunnel", then use ngrok or cloudflared to give Ollama a public URL.',
-              'Run: ngrok http 11434 — then paste the https URL it gives you.',
+              'Run: ngrok http 11434 - then paste the https URL it gives you.',
             ].join(' '),
           )
           onResult?.(false)
@@ -177,7 +177,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         return
       }
 
-      // tunnel mode — route through server-side proxy to avoid CORS / ngrok interstitial
+      // tunnel mode - route through server-side proxy to avoid CORS / ngrok interstitial
       const tunnelBase = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
       const completionUrl = normalizeOpenAIChatCompletionsUrl(tunnelBase)
       if (!completionUrl) {
@@ -229,7 +229,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
                 proxyContext ? `Proxy note: ${proxyContext}` : '',
                 'The browser reached your tunnel, but Ollama still rejected the request.',
                 directRes.status === 403
-                  ? 'HTTP 403 almost always means ngrok is not rewriting the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 — Ollama blocks tunnel hostnames by default to prevent DNS rebinding.'
+                  ? 'HTTP 403 almost always means ngrok is not rewriting the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 - Ollama blocks tunnel hostnames by default to prevent DNS rebinding.'
                   : 'Confirm Ollama is running, the tunnel points at port 11434, and OLLAMA_ORIGINS includes this Chorus UI origin.',
               ]
                 .filter(Boolean)
@@ -282,7 +282,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         setMessage(`HTTP ${res.status}: ${proxyError}`)
         if (res.status === 403) {
           setTip(
-            'Ollama returned 403. This is DNS-rebinding protection — ngrok must rewrite the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 (paste the new URL above, then retest).',
+            'Ollama returned 403. This is DNS-rebinding protection - ngrok must rewrite the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 (paste the new URL above, then retest).',
           )
         }
         onResult?.(false)
@@ -303,7 +303,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         setTip(
           mode === 'tunnel'
             ? [
-                '"Failed to fetch" — the server-side proxy could not reach your tunnel.',
+                '"Failed to fetch" - the server-side proxy could not reach your tunnel.',
                 '1. Confirm ngrok or cloudflared is running.',
                 '2. Confirm Ollama is running on the same machine.',
                 '3. Try opening your tunnel URL in a new browser tab to verify it loads.',

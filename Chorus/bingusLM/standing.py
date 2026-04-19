@@ -648,7 +648,7 @@ def main() -> None:
 
     print(
         f"Data: {len(train_seq)} train / {len(val_seq)} val sequences. "
-        "Tiny data overfits fast — try smaller --dim/--n-layers, higher --dropout, --label-smoothing 0.05.",
+        "Tiny data overfits fast - try smaller --dim/--n-layers, higher --dropout, --label-smoothing 0.05.",
         flush=True,
     )
     if len(train_seq) < 200:

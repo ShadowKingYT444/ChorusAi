@@ -388,10 +388,10 @@ export function ChorusAppShell() {
 
   const bottomHint = useMemo(() => {
     if (status.mode === 'unconfigured') {
-      return 'No orchestrator set — run setup to connect your node.'
+      return 'No orchestrator set - run setup to connect your node.'
     }
     if (status.mode === 'offline') {
-      return 'Orchestrator unreachable — check the host is running.'
+      return 'Orchestrator unreachable - check the host is running.'
     }
     if (readyPeerCount === 0) {
       return 'Set up your Ollama node before launching a run.'

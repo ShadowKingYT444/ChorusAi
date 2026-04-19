@@ -5,7 +5,7 @@ PersonaGPT2 (GPT-2 + MiniLM persona + PersonaHead) metrics on
 **Runs real work:** loads the HF dataset (same parsing as ``train_persona_gpt2.py``),
 batches examples, encodes personas with MiniLM, forward-passes ``PersonaGPT2``, and prints
 mean CE / perplexity / argmax accuracy for the **single next-token** target per row
-(the last token of the assistant reply — same objective as training).
+(the last token of the assistant reply - same objective as training).
 
 Uses **CUDA when available**, otherwise CPU (smaller defaults).
 

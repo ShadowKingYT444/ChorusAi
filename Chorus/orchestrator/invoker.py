@@ -40,7 +40,7 @@ class AgentInvoker:
         except sniffio.AsyncLibraryNotFoundError:
             backend = "asyncio"
         key = (url_key, backend)
-        # Dict ops are atomic — no awaits between get and set, so no lock needed.
+        # Dict ops are atomic - no awaits between get and set, so no lock needed.
         sem = self._per_peer_sem.get(key)
         if sem is None:
             sem = anyio.Semaphore(self._peer_concurrency)

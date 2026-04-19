@@ -48,7 +48,7 @@ def chat_page() -> str:
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Chorus tester — chat</title>
+  <title>Chorus tester - chat</title>
   <style>
     :root {{
       font-family: system-ui, sans-serif;
@@ -212,7 +212,7 @@ def index() -> str:
 <head><meta charset="utf-8"/><title>Chorus invoke tester</title></head>
 <body>
   <h1>Chorus invoke tester</h1>
-  <p><a href="/chat"><strong>Open chat UI</strong></a> — talk to your hardcoded LLM in the browser.</p>
+  <p><a href="/chat"><strong>Open chat UI</strong></a> - talk to your hardcoded LLM in the browser.</p>
   <p>Upstream: <code>{CHAT_COMPLETIONS_URL}</code></p>
   <p>Use <code>POST /invoke</code> with JSON, e.g.:</p>
   <pre id="ex"></pre>

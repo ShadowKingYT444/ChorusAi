@@ -5,7 +5,7 @@ Each block: pairwise P ∈ R^{384×384} → **Gaussian-weighted 8×8 patch sum**
 pair_w1…b2 (48×48) → row softmax + rational sum → **48** scalars → **Linear(48,384)** → scale rows
 of H → shared MLP. After blocks, **learned softmax over 384 rows** of H → **Linear(64, V)**.
 
-Default V=16000, 5 blocks — softmax-weighted sum over 384 rows → Linear(64, V). Run
+Default V=16000, 5 blocks - softmax-weighted sum over 384 rows → Linear(64, V). Run
 `AutoregPredictor.parameter_count_breakdown()`.
 """
 

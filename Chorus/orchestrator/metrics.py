@@ -1,5 +1,5 @@
 """Lightweight in-memory metrics (dict-backed). No deps. Not thread-safe by
-design — orchestrator is single-process asyncio so we just bump counters.
+design - orchestrator is single-process asyncio so we just bump counters.
 Render as Prometheus text or JSON for a UI tile."""
 
 from __future__ import annotations

@@ -43,7 +43,7 @@ const EMPTY: JobWebSocketState = {
 
 /**
  * Subscribe to orchestrator `/ws/jobs/{job_id}` event stream.
- * Replays history on (re)connect — deduped by `(round, slot_id, type, snippet)` /
+ * Replays history on (re)connect - deduped by `(round, slot_id, type, snippet)` /
  * `(round, from, to, kind)`.
  */
 export function useJobWebSocket(jobId: string | null | undefined): JobWebSocketState {

@@ -204,7 +204,7 @@ cd /path/to/DistLM
 python -m pip install -e .
 ```
 
-### 2. Agent servers — bind on the network interface
+### 2. Agent servers - bind on the network interface
 
 On **each agent machine**, run the bundled echo agent (or your own OpenAI-compatible app). Use **`0.0.0.0`** so the orchestrator can connect over the LAN; **`127.0.0.1` alone** would only accept local connections.
 
@@ -226,7 +226,7 @@ curl -s http://10.0.0.11:8010/health
 
 Expect JSON including `"status":"ok"`. If this fails, open **firewall / security group** rules: **TCP from O to each agent port** (e.g. `8010`).
 
-### 3. Orchestrator — listen on the network
+### 3. Orchestrator - listen on the network
 
 **On Server O:**
 
@@ -239,21 +239,21 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 
 **Orchestrator environment (multi-server):**
 
-- **`ORC_LAN_MODE`** — Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16–31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
+- **`ORC_LAN_MODE`** - Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16-31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
 
-- **`ORC_CORS_ORIGINS`** — Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
+- **`ORC_CORS_ORIGINS`** - Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
 
   ```bash
-  # Windows (cmd) — set before starting uvicorn
+  # Windows (cmd) - set before starting uvicorn
   set ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
 
   # bash
   export ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
   ```
 
-- **`ORC_ALLOWED_HOSTS`** — If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
+- **`ORC_ALLOWED_HOSTS`** - If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
 
-- **`ORC_ALLOW_LOCALHOST=0`** — Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
+- **`ORC_ALLOW_LOCALHOST=0`** - Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
 
 Restart the orchestrator after changing these variables.
 
@@ -263,7 +263,7 @@ Restart the orchestrator after changing these variables.
 curl -s http://10.0.0.1:8000/health
 ```
 
-### 4. Frontend — env vars for several agent bases
+### 4. Frontend - env vars for several agent bases
 
 In **`frontend/.env.local`** (restart `npm run dev` after edits):
 
@@ -272,8 +272,8 @@ NEXT_PUBLIC_ORCHESTRATOR_BASE_URL=http://10.0.0.1:8000
 NEXT_PUBLIC_AGENT_BASE_URLS=http://10.0.0.10:8010,http://10.0.0.11:8010
 ```
 
-- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** — Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
-- **`NEXT_PUBLIC_AGENT_BASE_URLS`** — Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
+- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** - Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
+- **`NEXT_PUBLIC_AGENT_BASE_URLS`** - Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
 
 If the UI runs on Server O but you browse from a laptop, both URLs above must still be valid: the **orchestrator** URL for the laptop’s browser, and the **agent** URLs for the **orchestrator**’s outbound HTTP.
 
@@ -291,7 +291,7 @@ To accept remote browsers on the dev server:
 npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-### 5. UI — launch a job (same as single-host)
+### 5. UI - launch a job (same as single-host)
 
 1. Open the app (e.g. `http://10.0.0.1:3000` or your published URL).
 2. **Click** the main prompt textarea and **type** the simulation prompt.
@@ -302,7 +302,7 @@ The client **`POST`s `/jobs`**, then **`POST`s `/jobs/{job_id}/agents`** with on
 
 ### 6. Same job via HTTP only (debugging)
 
-**Create a job** (Windows `cmd` — use `^` for line continuation; on bash use `\`):
+**Create a job** (Windows `cmd` - use `^` for line continuation; on bash use `\`):
 
 ```bash
 curl -s -X POST http://10.0.0.1:8000/jobs -H "Content-Type: application/json" -d "{\"context\":\"demo\",\"prompt\":\"Hello multi-server\",\"agent_count\":4,\"rounds\":2,\"payout\":0.1}"
@@ -341,12 +341,12 @@ Replace `tests.fixtures.echo_agent` with any service that implements **`POST /v1
 
 ## How a job runs
 
-1. **`POST /jobs`** — Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
-2. **`POST /jobs/{job_id}/agents`** — Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
+1. **`POST /jobs`** - Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
+2. **`POST /jobs/{job_id}/agents`** - Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
 3. When the **last** required slot is registered and the job is still `pending`, the **round engine** starts asynchronously (`running` → rounds → `completed` or `failed`).
-4. **`GET /jobs/{job_id}`** — Public status; when terminal, `settlement_preview` may be present.
-5. **`GET /jobs/{job_id}/operator`** — Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
-6. **`WS /ws/jobs/{job_id}`** — Subscribe **before** or after registration; events are queued per subscriber.
+4. **`GET /jobs/{job_id}`** - Public status; when terminal, `settlement_preview` may be present.
+5. **`GET /jobs/{job_id}/operator`** - Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
+6. **`WS /ws/jobs/{job_id}`** - Subscribe **before** or after registration; events are queued per subscriber.
 
 **Storage:** in-memory only (`orchestrator/store.py`); restarting the process loses jobs.
 
@@ -417,7 +417,7 @@ Marks each completion **`valid`**, **`suspect`**, or **`pruned`** (streak-based 
 | `ORC_MINILM_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Hugging Face model id for MiniLM backend. |
 | `ORC_EMBED_BATCH_SIZE` | `32` | MiniLM batch encode size per round. |
 | `ORC_HASH_EMBED_DIM` | `64` | Vector dimension when backend is `hash`. |
-| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual–prompt cosine test. |
+| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual-prompt cosine test. |
 | `ORC_LAN_MODE` | `1` | When `1`, also allow CORS from private IPv4 LAN browser origins (any port). Set `0` to disable. |
 | `ORC_CORS_ORIGINS` | *(unset)* | Optional comma-separated exact origins; if unset, `http://localhost:3000` and `http://127.0.0.1:3000`. With **`ORC_LAN_MODE=1`**, private LAN IPs match via regex too. |
 
@@ -434,12 +434,12 @@ python scripts/run_distlm_sim.py ^
 
 (Use `\` line continuations on Unix shells.)
 
-- **`--embedding minilm`** — production-like vectors (slower; may download weights).
-- **`--embedding hash`** — default in script; fast.
-- **`--demo-prune`** — echo agent returns short text → watchdog → suspect / prune path.
-- **`--demo-refusal`** — canned refusal-like line → `possible_refusal` notes + streak behavior.
-- **`--json`** — print operator JSON only.
-- **`--temperature T`** — sets `ORC_TEMPERATURE` for that process.
+- **`--embedding minilm`** - production-like vectors (slower; may download weights).
+- **`--embedding hash`** - default in script; fast.
+- **`--demo-prune`** - echo agent returns short text → watchdog → suspect / prune path.
+- **`--demo-refusal`** - canned refusal-like line → `possible_refusal` notes + streak behavior.
+- **`--json`** - print operator JSON only.
+- **`--temperature T`** - sets `ORC_TEMPERATURE` for that process.
 
 The subprocess uses **`python -m uvicorn`**; ensure the same environment has `uvicorn` installed.
 
@@ -450,8 +450,8 @@ pytest -q
 ```
 
 - The `tests/` directory is a real Python package (`tests/__init__.py`) so `tests.fixtures.echo_agent` is not shadowed by unrelated third-party `tests` packages that may exist in your global site-packages.
-- **`tests/conftest.py`** — sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
-- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI — requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
+- **`tests/conftest.py`** - sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
+- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI - requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
 >>>>>>> Stashed changes
 
 ```bash
@@ -552,7 +552,7 @@ cd /path/to/DistLM
 python -m pip install -e .
 ```
 
-### 2. Agent servers — bind on the network interface
+### 2. Agent servers - bind on the network interface
 
 On **each agent machine**, run the bundled echo agent (or your own OpenAI-compatible app). Use **`0.0.0.0`** so the orchestrator can connect over the LAN; **`127.0.0.1` alone** would only accept local connections.
 
@@ -574,7 +574,7 @@ curl -s http://10.0.0.11:8010/health
 
 Expect JSON including `"status":"ok"`. If this fails, open **firewall / security group** rules: **TCP from O to each agent port** (e.g. `8010`).
 
-### 3. Orchestrator — listen on the network
+### 3. Orchestrator - listen on the network
 
 **On Server O:**
 
@@ -587,21 +587,21 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 
 **Orchestrator environment (multi-server):**
 
-- **`ORC_LAN_MODE`** — Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16–31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
+- **`ORC_LAN_MODE`** - Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16-31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
 
-- **`ORC_CORS_ORIGINS`** — Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
+- **`ORC_CORS_ORIGINS`** - Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
 
   ```bash
-  # Windows (cmd) — set before starting uvicorn
+  # Windows (cmd) - set before starting uvicorn
   set ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
 
   # bash
   export ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
   ```
 
-- **`ORC_ALLOWED_HOSTS`** — If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
+- **`ORC_ALLOWED_HOSTS`** - If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
 
-- **`ORC_ALLOW_LOCALHOST=0`** — Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
+- **`ORC_ALLOW_LOCALHOST=0`** - Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
 
 Restart the orchestrator after changing these variables.
 
@@ -611,7 +611,7 @@ Restart the orchestrator after changing these variables.
 curl -s http://10.0.0.1:8000/health
 ```
 
-### 4. Frontend — env vars for several agent bases
+### 4. Frontend - env vars for several agent bases
 
 In **`frontend/.env.local`** (restart `npm run dev` after edits):
 
@@ -620,8 +620,8 @@ NEXT_PUBLIC_ORCHESTRATOR_BASE_URL=http://10.0.0.1:8000
 NEXT_PUBLIC_AGENT_BASE_URLS=http://10.0.0.10:8010,http://10.0.0.11:8010
 ```
 
-- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** — Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
-- **`NEXT_PUBLIC_AGENT_BASE_URLS`** — Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
+- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** - Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
+- **`NEXT_PUBLIC_AGENT_BASE_URLS`** - Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
 
 If the UI runs on Server O but you browse from a laptop, both URLs above must still be valid: the **orchestrator** URL for the laptop’s browser, and the **agent** URLs for the **orchestrator**’s outbound HTTP.
 
@@ -639,7 +639,7 @@ To accept remote browsers on the dev server:
 npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-### 5. UI — launch a job (same as single-host)
+### 5. UI - launch a job (same as single-host)
 
 1. Open the app (e.g. `http://10.0.0.1:3000` or your published URL).
 2. **Click** the main prompt textarea and **type** the simulation prompt.
@@ -650,7 +650,7 @@ The client **`POST`s `/jobs`**, then **`POST`s `/jobs/{job_id}/agents`** with on
 
 ### 6. Same job via HTTP only (debugging)
 
-**Create a job** (Windows `cmd` — use `^` for line continuation; on bash use `\`):
+**Create a job** (Windows `cmd` - use `^` for line continuation; on bash use `\`):
 
 ```bash
 curl -s -X POST http://10.0.0.1:8000/jobs -H "Content-Type: application/json" -d "{\"context\":\"demo\",\"prompt\":\"Hello multi-server\",\"agent_count\":4,\"rounds\":2,\"payout\":0.1}"
@@ -689,12 +689,12 @@ Replace `tests.fixtures.echo_agent` with any service that implements **`POST /v1
 
 ## How a job runs
 
-1. **`POST /jobs`** — Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
-2. **`POST /jobs/{job_id}/agents`** — Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
+1. **`POST /jobs`** - Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
+2. **`POST /jobs/{job_id}/agents`** - Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
 3. When the **last** required slot is registered and the job is still `pending`, the **round engine** starts asynchronously (`running` → rounds → `completed` or `failed`).
-4. **`GET /jobs/{job_id}`** — Public status; when terminal, `settlement_preview` may be present.
-5. **`GET /jobs/{job_id}/operator`** — Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
-6. **`WS /ws/jobs/{job_id}`** — Subscribe **before** or after registration; events are queued per subscriber.
+4. **`GET /jobs/{job_id}`** - Public status; when terminal, `settlement_preview` may be present.
+5. **`GET /jobs/{job_id}/operator`** - Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
+6. **`WS /ws/jobs/{job_id}`** - Subscribe **before** or after registration; events are queued per subscriber.
 
 **Storage:** in-memory only (`orchestrator/store.py`); restarting the process loses jobs.
 
@@ -765,7 +765,7 @@ Marks each completion **`valid`**, **`suspect`**, or **`pruned`** (streak-based 
 | `ORC_MINILM_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Hugging Face model id for MiniLM backend. |
 | `ORC_EMBED_BATCH_SIZE` | `32` | MiniLM batch encode size per round. |
 | `ORC_HASH_EMBED_DIM` | `64` | Vector dimension when backend is `hash`. |
-| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual–prompt cosine test. |
+| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual-prompt cosine test. |
 | `ORC_LAN_MODE` | `1` | When `1`, also allow CORS from private IPv4 LAN browser origins (any port). Set `0` to disable. |
 | `ORC_CORS_ORIGINS` | *(unset)* | Optional comma-separated exact origins; if unset, `http://localhost:3000` and `http://127.0.0.1:3000`. With **`ORC_LAN_MODE=1`**, private LAN IPs match via regex too. |
 
@@ -782,12 +782,12 @@ python scripts/run_distlm_sim.py ^
 
 (Use `\` line continuations on Unix shells.)
 
-- **`--embedding minilm`** — production-like vectors (slower; may download weights).
-- **`--embedding hash`** — default in script; fast.
-- **`--demo-prune`** — echo agent returns short text → watchdog → suspect / prune path.
-- **`--demo-refusal`** — canned refusal-like line → `possible_refusal` notes + streak behavior.
-- **`--json`** — print operator JSON only.
-- **`--temperature T`** — sets `ORC_TEMPERATURE` for that process.
+- **`--embedding minilm`** - production-like vectors (slower; may download weights).
+- **`--embedding hash`** - default in script; fast.
+- **`--demo-prune`** - echo agent returns short text → watchdog → suspect / prune path.
+- **`--demo-refusal`** - canned refusal-like line → `possible_refusal` notes + streak behavior.
+- **`--json`** - print operator JSON only.
+- **`--temperature T`** - sets `ORC_TEMPERATURE` for that process.
 
 The subprocess uses **`python -m uvicorn`**; ensure the same environment has `uvicorn` installed.
 
@@ -798,8 +798,8 @@ pytest -q
 ```
 
 - The `tests/` directory is a real Python package (`tests/__init__.py`) so `tests.fixtures.echo_agent` is not shadowed by unrelated third-party `tests` packages that may exist in your global site-packages.
-- **`tests/conftest.py`** — sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
-- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI — requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
+- **`tests/conftest.py`** - sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
+- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI - requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
 >>>>>>> Stashed changes
 
 ```bash
@@ -900,7 +900,7 @@ cd /path/to/DistLM
 python -m pip install -e .
 ```
 
-### 2. Agent servers — bind on the network interface
+### 2. Agent servers - bind on the network interface
 
 On **each agent machine**, run the bundled echo agent (or your own OpenAI-compatible app). Use **`0.0.0.0`** so the orchestrator can connect over the LAN; **`127.0.0.1` alone** would only accept local connections.
 
@@ -922,7 +922,7 @@ curl -s http://10.0.0.11:8010/health
 
 Expect JSON including `"status":"ok"`. If this fails, open **firewall / security group** rules: **TCP from O to each agent port** (e.g. `8010`).
 
-### 3. Orchestrator — listen on the network
+### 3. Orchestrator - listen on the network
 
 **On Server O:**
 
@@ -935,21 +935,21 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 
 **Orchestrator environment (multi-server):**
 
-- **`ORC_LAN_MODE`** — Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16–31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
+- **`ORC_LAN_MODE`** - Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16-31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
 
-- **`ORC_CORS_ORIGINS`** — Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
+- **`ORC_CORS_ORIGINS`** - Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
 
   ```bash
-  # Windows (cmd) — set before starting uvicorn
+  # Windows (cmd) - set before starting uvicorn
   set ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
 
   # bash
   export ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
   ```
 
-- **`ORC_ALLOWED_HOSTS`** — If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
+- **`ORC_ALLOWED_HOSTS`** - If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
 
-- **`ORC_ALLOW_LOCALHOST=0`** — Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
+- **`ORC_ALLOW_LOCALHOST=0`** - Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
 
 Restart the orchestrator after changing these variables.
 
@@ -959,7 +959,7 @@ Restart the orchestrator after changing these variables.
 curl -s http://10.0.0.1:8000/health
 ```
 
-### 4. Frontend — env vars for several agent bases
+### 4. Frontend - env vars for several agent bases
 
 In **`frontend/.env.local`** (restart `npm run dev` after edits):
 
@@ -968,8 +968,8 @@ NEXT_PUBLIC_ORCHESTRATOR_BASE_URL=http://10.0.0.1:8000
 NEXT_PUBLIC_AGENT_BASE_URLS=http://10.0.0.10:8010,http://10.0.0.11:8010
 ```
 
-- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** — Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
-- **`NEXT_PUBLIC_AGENT_BASE_URLS`** — Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
+- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** - Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
+- **`NEXT_PUBLIC_AGENT_BASE_URLS`** - Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
 
 If the UI runs on Server O but you browse from a laptop, both URLs above must still be valid: the **orchestrator** URL for the laptop’s browser, and the **agent** URLs for the **orchestrator**’s outbound HTTP.
 
@@ -987,7 +987,7 @@ To accept remote browsers on the dev server:
 npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-### 5. UI — launch a job (same as single-host)
+### 5. UI - launch a job (same as single-host)
 
 1. Open the app (e.g. `http://10.0.0.1:3000` or your published URL).
 2. **Click** the main prompt textarea and **type** the simulation prompt.
@@ -998,7 +998,7 @@ The client **`POST`s `/jobs`**, then **`POST`s `/jobs/{job_id}/agents`** with on
 
 ### 6. Same job via HTTP only (debugging)
 
-**Create a job** (Windows `cmd` — use `^` for line continuation; on bash use `\`):
+**Create a job** (Windows `cmd` - use `^` for line continuation; on bash use `\`):
 
 ```bash
 curl -s -X POST http://10.0.0.1:8000/jobs -H "Content-Type: application/json" -d "{\"context\":\"demo\",\"prompt\":\"Hello multi-server\",\"agent_count\":4,\"rounds\":2,\"payout\":0.1}"
@@ -1037,12 +1037,12 @@ Replace `tests.fixtures.echo_agent` with any service that implements **`POST /v1
 
 ## How a job runs
 
-1. **`POST /jobs`** — Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
-2. **`POST /jobs/{job_id}/agents`** — Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
+1. **`POST /jobs`** - Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
+2. **`POST /jobs/{job_id}/agents`** - Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
 3. When the **last** required slot is registered and the job is still `pending`, the **round engine** starts asynchronously (`running` → rounds → `completed` or `failed`).
-4. **`GET /jobs/{job_id}`** — Public status; when terminal, `settlement_preview` may be present.
-5. **`GET /jobs/{job_id}/operator`** — Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
-6. **`WS /ws/jobs/{job_id}`** — Subscribe **before** or after registration; events are queued per subscriber.
+4. **`GET /jobs/{job_id}`** - Public status; when terminal, `settlement_preview` may be present.
+5. **`GET /jobs/{job_id}/operator`** - Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
+6. **`WS /ws/jobs/{job_id}`** - Subscribe **before** or after registration; events are queued per subscriber.
 
 **Storage:** in-memory only (`orchestrator/store.py`); restarting the process loses jobs.
 
@@ -1113,7 +1113,7 @@ Marks each completion **`valid`**, **`suspect`**, or **`pruned`** (streak-based 
 | `ORC_MINILM_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Hugging Face model id for MiniLM backend. |
 | `ORC_EMBED_BATCH_SIZE` | `32` | MiniLM batch encode size per round. |
 | `ORC_HASH_EMBED_DIM` | `64` | Vector dimension when backend is `hash`. |
-| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual–prompt cosine test. |
+| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual-prompt cosine test. |
 | `ORC_LAN_MODE` | `1` | When `1`, also allow CORS from private IPv4 LAN browser origins (any port). Set `0` to disable. |
 | `ORC_CORS_ORIGINS` | *(unset)* | Optional comma-separated exact origins; if unset, `http://localhost:3000` and `http://127.0.0.1:3000`. With **`ORC_LAN_MODE=1`**, private LAN IPs match via regex too. |
 
@@ -1130,12 +1130,12 @@ python scripts/run_distlm_sim.py ^
 
 (Use `\` line continuations on Unix shells.)
 
-- **`--embedding minilm`** — production-like vectors (slower; may download weights).
-- **`--embedding hash`** — default in script; fast.
-- **`--demo-prune`** — echo agent returns short text → watchdog → suspect / prune path.
-- **`--demo-refusal`** — canned refusal-like line → `possible_refusal` notes + streak behavior.
-- **`--json`** — print operator JSON only.
-- **`--temperature T`** — sets `ORC_TEMPERATURE` for that process.
+- **`--embedding minilm`** - production-like vectors (slower; may download weights).
+- **`--embedding hash`** - default in script; fast.
+- **`--demo-prune`** - echo agent returns short text → watchdog → suspect / prune path.
+- **`--demo-refusal`** - canned refusal-like line → `possible_refusal` notes + streak behavior.
+- **`--json`** - print operator JSON only.
+- **`--temperature T`** - sets `ORC_TEMPERATURE` for that process.
 
 The subprocess uses **`python -m uvicorn`**; ensure the same environment has `uvicorn` installed.
 
@@ -1146,8 +1146,8 @@ pytest -q
 ```
 
 - The `tests/` directory is a real Python package (`tests/__init__.py`) so `tests.fixtures.echo_agent` is not shadowed by unrelated third-party `tests` packages that may exist in your global site-packages.
-- **`tests/conftest.py`** — sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
-- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI — requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
+- **`tests/conftest.py`** - sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
+- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI - requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
 >>>>>>> Stashed changes
 
 ```bash
@@ -1248,7 +1248,7 @@ cd /path/to/DistLM
 python -m pip install -e .
 ```
 
-### 2. Agent servers — bind on the network interface
+### 2. Agent servers - bind on the network interface
 
 On **each agent machine**, run the bundled echo agent (or your own OpenAI-compatible app). Use **`0.0.0.0`** so the orchestrator can connect over the LAN; **`127.0.0.1` alone** would only accept local connections.
 
@@ -1270,7 +1270,7 @@ curl -s http://10.0.0.11:8010/health
 
 Expect JSON including `"status":"ok"`. If this fails, open **firewall / security group** rules: **TCP from O to each agent port** (e.g. `8010`).
 
-### 3. Orchestrator — listen on the network
+### 3. Orchestrator - listen on the network
 
 **On Server O:**
 
@@ -1283,21 +1283,21 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 
 **Orchestrator environment (multi-server):**
 
-- **`ORC_LAN_MODE`** — Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16–31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
+- **`ORC_LAN_MODE`** - Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16-31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
 
-- **`ORC_CORS_ORIGINS`** — Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
+- **`ORC_CORS_ORIGINS`** - Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
 
   ```bash
-  # Windows (cmd) — set before starting uvicorn
+  # Windows (cmd) - set before starting uvicorn
   set ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
 
   # bash
   export ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
   ```
 
-- **`ORC_ALLOWED_HOSTS`** — If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
+- **`ORC_ALLOWED_HOSTS`** - If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
 
-- **`ORC_ALLOW_LOCALHOST=0`** — Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
+- **`ORC_ALLOW_LOCALHOST=0`** - Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
 
 Restart the orchestrator after changing these variables.
 
@@ -1307,7 +1307,7 @@ Restart the orchestrator after changing these variables.
 curl -s http://10.0.0.1:8000/health
 ```
 
-### 4. Frontend — env vars for several agent bases
+### 4. Frontend - env vars for several agent bases
 
 In **`frontend/.env.local`** (restart `npm run dev` after edits):
 
@@ -1316,8 +1316,8 @@ NEXT_PUBLIC_ORCHESTRATOR_BASE_URL=http://10.0.0.1:8000
 NEXT_PUBLIC_AGENT_BASE_URLS=http://10.0.0.10:8010,http://10.0.0.11:8010
 ```
 
-- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** — Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
-- **`NEXT_PUBLIC_AGENT_BASE_URLS`** — Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
+- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** - Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
+- **`NEXT_PUBLIC_AGENT_BASE_URLS`** - Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
 
 If the UI runs on Server O but you browse from a laptop, both URLs above must still be valid: the **orchestrator** URL for the laptop’s browser, and the **agent** URLs for the **orchestrator**’s outbound HTTP.
 
@@ -1335,7 +1335,7 @@ To accept remote browsers on the dev server:
 npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-### 5. UI — launch a job (same as single-host)
+### 5. UI - launch a job (same as single-host)
 
 1. Open the app (e.g. `http://10.0.0.1:3000` or your published URL).
 2. **Click** the main prompt textarea and **type** the simulation prompt.
@@ -1346,7 +1346,7 @@ The client **`POST`s `/jobs`**, then **`POST`s `/jobs/{job_id}/agents`** with on
 
 ### 6. Same job via HTTP only (debugging)
 
-**Create a job** (Windows `cmd` — use `^` for line continuation; on bash use `\`):
+**Create a job** (Windows `cmd` - use `^` for line continuation; on bash use `\`):
 
 ```bash
 curl -s -X POST http://10.0.0.1:8000/jobs -H "Content-Type: application/json" -d "{\"context\":\"demo\",\"prompt\":\"Hello multi-server\",\"agent_count\":4,\"rounds\":2,\"payout\":0.1}"
@@ -1385,12 +1385,12 @@ Replace `tests.fixtures.echo_agent` with any service that implements **`POST /v1
 
 ## How a job runs
 
-1. **`POST /jobs`** — Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
-2. **`POST /jobs/{job_id}/agents`** — Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
+1. **`POST /jobs`** - Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
+2. **`POST /jobs/{job_id}/agents`** - Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
 3. When the **last** required slot is registered and the job is still `pending`, the **round engine** starts asynchronously (`running` → rounds → `completed` or `failed`).
-4. **`GET /jobs/{job_id}`** — Public status; when terminal, `settlement_preview` may be present.
-5. **`GET /jobs/{job_id}/operator`** — Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
-6. **`WS /ws/jobs/{job_id}`** — Subscribe **before** or after registration; events are queued per subscriber.
+4. **`GET /jobs/{job_id}`** - Public status; when terminal, `settlement_preview` may be present.
+5. **`GET /jobs/{job_id}/operator`** - Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
+6. **`WS /ws/jobs/{job_id}`** - Subscribe **before** or after registration; events are queued per subscriber.
 
 **Storage:** in-memory only (`orchestrator/store.py`); restarting the process loses jobs.
 
@@ -1461,7 +1461,7 @@ Marks each completion **`valid`**, **`suspect`**, or **`pruned`** (streak-based 
 | `ORC_MINILM_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Hugging Face model id for MiniLM backend. |
 | `ORC_EMBED_BATCH_SIZE` | `32` | MiniLM batch encode size per round. |
 | `ORC_HASH_EMBED_DIM` | `64` | Vector dimension when backend is `hash`. |
-| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual–prompt cosine test. |
+| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual-prompt cosine test. |
 | `ORC_LAN_MODE` | `1` | When `1`, also allow CORS from private IPv4 LAN browser origins (any port). Set `0` to disable. |
 | `ORC_CORS_ORIGINS` | *(unset)* | Optional comma-separated exact origins; if unset, `http://localhost:3000` and `http://127.0.0.1:3000`. With **`ORC_LAN_MODE=1`**, private LAN IPs match via regex too. |
 
@@ -1478,12 +1478,12 @@ python scripts/run_distlm_sim.py ^
 
 (Use `\` line continuations on Unix shells.)
 
-- **`--embedding minilm`** — production-like vectors (slower; may download weights).
-- **`--embedding hash`** — default in script; fast.
-- **`--demo-prune`** — echo agent returns short text → watchdog → suspect / prune path.
-- **`--demo-refusal`** — canned refusal-like line → `possible_refusal` notes + streak behavior.
-- **`--json`** — print operator JSON only.
-- **`--temperature T`** — sets `ORC_TEMPERATURE` for that process.
+- **`--embedding minilm`** - production-like vectors (slower; may download weights).
+- **`--embedding hash`** - default in script; fast.
+- **`--demo-prune`** - echo agent returns short text → watchdog → suspect / prune path.
+- **`--demo-refusal`** - canned refusal-like line → `possible_refusal` notes + streak behavior.
+- **`--json`** - print operator JSON only.
+- **`--temperature T`** - sets `ORC_TEMPERATURE` for that process.
 
 The subprocess uses **`python -m uvicorn`**; ensure the same environment has `uvicorn` installed.
 
@@ -1494,8 +1494,8 @@ pytest -q
 ```
 
 - The `tests/` directory is a real Python package (`tests/__init__.py`) so `tests.fixtures.echo_agent` is not shadowed by unrelated third-party `tests` packages that may exist in your global site-packages.
-- **`tests/conftest.py`** — sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
-- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI — requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
+- **`tests/conftest.py`** - sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
+- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI - requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
 >>>>>>> Stashed changes
 
 ```bash
@@ -1596,7 +1596,7 @@ cd /path/to/DistLM
 python -m pip install -e .
 ```
 
-### 2. Agent servers — bind on the network interface
+### 2. Agent servers - bind on the network interface
 
 On **each agent machine**, run the bundled echo agent (or your own OpenAI-compatible app). Use **`0.0.0.0`** so the orchestrator can connect over the LAN; **`127.0.0.1` alone** would only accept local connections.
 
@@ -1618,7 +1618,7 @@ curl -s http://10.0.0.11:8010/health
 
 Expect JSON including `"status":"ok"`. If this fails, open **firewall / security group** rules: **TCP from O to each agent port** (e.g. `8010`).
 
-### 3. Orchestrator — listen on the network
+### 3. Orchestrator - listen on the network
 
 **On Server O:**
 
@@ -1631,21 +1631,21 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 
 **Orchestrator environment (multi-server):**
 
-- **`ORC_LAN_MODE`** — Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16–31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
+- **`ORC_LAN_MODE`** - Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16-31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
 
-- **`ORC_CORS_ORIGINS`** — Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
+- **`ORC_CORS_ORIGINS`** - Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
 
   ```bash
-  # Windows (cmd) — set before starting uvicorn
+  # Windows (cmd) - set before starting uvicorn
   set ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
 
   # bash
   export ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
   ```
 
-- **`ORC_ALLOWED_HOSTS`** — If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
+- **`ORC_ALLOWED_HOSTS`** - If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
 
-- **`ORC_ALLOW_LOCALHOST=0`** — Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
+- **`ORC_ALLOW_LOCALHOST=0`** - Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
 
 Restart the orchestrator after changing these variables.
 
@@ -1655,7 +1655,7 @@ Restart the orchestrator after changing these variables.
 curl -s http://10.0.0.1:8000/health
 ```
 
-### 4. Frontend — env vars for several agent bases
+### 4. Frontend - env vars for several agent bases
 
 In **`frontend/.env.local`** (restart `npm run dev` after edits):
 
@@ -1664,8 +1664,8 @@ NEXT_PUBLIC_ORCHESTRATOR_BASE_URL=http://10.0.0.1:8000
 NEXT_PUBLIC_AGENT_BASE_URLS=http://10.0.0.10:8010,http://10.0.0.11:8010
 ```
 
-- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** — Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
-- **`NEXT_PUBLIC_AGENT_BASE_URLS`** — Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
+- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** - Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
+- **`NEXT_PUBLIC_AGENT_BASE_URLS`** - Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
 
 If the UI runs on Server O but you browse from a laptop, both URLs above must still be valid: the **orchestrator** URL for the laptop’s browser, and the **agent** URLs for the **orchestrator**’s outbound HTTP.
 
@@ -1683,7 +1683,7 @@ To accept remote browsers on the dev server:
 npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-### 5. UI — launch a job (same as single-host)
+### 5. UI - launch a job (same as single-host)
 
 1. Open the app (e.g. `http://10.0.0.1:3000` or your published URL).
 2. **Click** the main prompt textarea and **type** the simulation prompt.
@@ -1694,7 +1694,7 @@ The client **`POST`s `/jobs`**, then **`POST`s `/jobs/{job_id}/agents`** with on
 
 ### 6. Same job via HTTP only (debugging)
 
-**Create a job** (Windows `cmd` — use `^` for line continuation; on bash use `\`):
+**Create a job** (Windows `cmd` - use `^` for line continuation; on bash use `\`):
 
 ```bash
 curl -s -X POST http://10.0.0.1:8000/jobs -H "Content-Type: application/json" -d "{\"context\":\"demo\",\"prompt\":\"Hello multi-server\",\"agent_count\":4,\"rounds\":2,\"payout\":0.1}"
@@ -1733,12 +1733,12 @@ Replace `tests.fixtures.echo_agent` with any service that implements **`POST /v1
 
 ## How a job runs
 
-1. **`POST /jobs`** — Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
-2. **`POST /jobs/{job_id}/agents`** — Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
+1. **`POST /jobs`** - Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
+2. **`POST /jobs/{job_id}/agents`** - Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
 3. When the **last** required slot is registered and the job is still `pending`, the **round engine** starts asynchronously (`running` → rounds → `completed` or `failed`).
-4. **`GET /jobs/{job_id}`** — Public status; when terminal, `settlement_preview` may be present.
-5. **`GET /jobs/{job_id}/operator`** — Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
-6. **`WS /ws/jobs/{job_id}`** — Subscribe **before** or after registration; events are queued per subscriber.
+4. **`GET /jobs/{job_id}`** - Public status; when terminal, `settlement_preview` may be present.
+5. **`GET /jobs/{job_id}/operator`** - Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
+6. **`WS /ws/jobs/{job_id}`** - Subscribe **before** or after registration; events are queued per subscriber.
 
 **Storage:** in-memory only (`orchestrator/store.py`); restarting the process loses jobs.
 
@@ -1809,7 +1809,7 @@ Marks each completion **`valid`**, **`suspect`**, or **`pruned`** (streak-based 
 | `ORC_MINILM_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Hugging Face model id for MiniLM backend. |
 | `ORC_EMBED_BATCH_SIZE` | `32` | MiniLM batch encode size per round. |
 | `ORC_HASH_EMBED_DIM` | `64` | Vector dimension when backend is `hash`. |
-| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual–prompt cosine test. |
+| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual-prompt cosine test. |
 | `ORC_LAN_MODE` | `1` | When `1`, also allow CORS from private IPv4 LAN browser origins (any port). Set `0` to disable. |
 | `ORC_CORS_ORIGINS` | *(unset)* | Optional comma-separated exact origins; if unset, `http://localhost:3000` and `http://127.0.0.1:3000`. With **`ORC_LAN_MODE=1`**, private LAN IPs match via regex too. |
 
@@ -1826,12 +1826,12 @@ python scripts/run_distlm_sim.py ^
 
 (Use `\` line continuations on Unix shells.)
 
-- **`--embedding minilm`** — production-like vectors (slower; may download weights).
-- **`--embedding hash`** — default in script; fast.
-- **`--demo-prune`** — echo agent returns short text → watchdog → suspect / prune path.
-- **`--demo-refusal`** — canned refusal-like line → `possible_refusal` notes + streak behavior.
-- **`--json`** — print operator JSON only.
-- **`--temperature T`** — sets `ORC_TEMPERATURE` for that process.
+- **`--embedding minilm`** - production-like vectors (slower; may download weights).
+- **`--embedding hash`** - default in script; fast.
+- **`--demo-prune`** - echo agent returns short text → watchdog → suspect / prune path.
+- **`--demo-refusal`** - canned refusal-like line → `possible_refusal` notes + streak behavior.
+- **`--json`** - print operator JSON only.
+- **`--temperature T`** - sets `ORC_TEMPERATURE` for that process.
 
 The subprocess uses **`python -m uvicorn`**; ensure the same environment has `uvicorn` installed.
 
@@ -1842,8 +1842,8 @@ pytest -q
 ```
 
 - The `tests/` directory is a real Python package (`tests/__init__.py`) so `tests.fixtures.echo_agent` is not shadowed by unrelated third-party `tests` packages that may exist in your global site-packages.
-- **`tests/conftest.py`** — sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
-- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI — requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
+- **`tests/conftest.py`** - sets `ORC_EMBEDDING_BACKEND=hash` unless already set (fast, deterministic).
+- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI - requires **`uvicorn` on PATH** for the subprocess (or use a venv where `Scripts` / `bin` is on PATH):
 >>>>>>> Stashed changes
 
 ```bash
@@ -1944,7 +1944,7 @@ cd /path/to/DistLM
 python -m pip install -e .
 ```
 
-### 2. Agent servers — bind on the network interface
+### 2. Agent servers - bind on the network interface
 
 On **each agent machine**, run the bundled echo agent (or your own OpenAI-compatible app). Use **`0.0.0.0`** so the orchestrator can connect over the LAN; **`127.0.0.1` alone** would only accept local connections.
 
@@ -1966,7 +1966,7 @@ curl -s http://10.0.0.11:8010/health
 
 Expect JSON including `"status":"ok"`. If this fails, open **firewall / security group** rules: **TCP from O to each agent port** (e.g. `8010`).
 
-### 3. Orchestrator — listen on the network
+### 3. Orchestrator - listen on the network
 
 **On Server O:**
 
@@ -1979,21 +1979,21 @@ python -m uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 
 **Orchestrator environment (multi-server):**
 
-- **`ORC_LAN_MODE`** — Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16–31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
+- **`ORC_LAN_MODE`** - Default `1`: allow CORS from typical **private IPv4** UI origins (`192.168.*`, `10.*`, `172.16-31.*`, any port) so phones/laptops on the same Wi‑Fi can hit the API. Set `0` if the orchestrator is internet-exposed and you want an explicit origin list only.
 
-- **`ORC_CORS_ORIGINS`** — Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
+- **`ORC_CORS_ORIGINS`** - Optional comma-separated **exact** origins for hostnames or non-private URLs. When unset, `localhost` / `127.0.0.1` on port 3000 are still allowed. Example adding explicit entries:
 
   ```bash
-  # Windows (cmd) — set before starting uvicorn
+  # Windows (cmd) - set before starting uvicorn
   set ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
 
   # bash
   export ORC_CORS_ORIGINS=http://10.0.0.1:3000,http://localhost:3000
   ```
 
-- **`ORC_ALLOWED_HOSTS`** — If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
+- **`ORC_ALLOWED_HOSTS`** - If set (comma-separated hostnames or IP strings), the invoker **only** allows those hosts in agent URLs. Leave unset for permissive LAN testing; set in production to pin agents, e.g. `10.0.0.10,10.0.0.11,my-agent.internal`.
 
-- **`ORC_ALLOW_LOCALHOST=0`** — Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
+- **`ORC_ALLOW_LOCALHOST=0`** - Optional hardening to forbid `localhost` / `127.0.0.1` in agent URLs.
 
 Restart the orchestrator after changing these variables.
 
@@ -2003,7 +2003,7 @@ Restart the orchestrator after changing these variables.
 curl -s http://10.0.0.1:8000/health
 ```
 
-### 4. Frontend — env vars for several agent bases
+### 4. Frontend - env vars for several agent bases
 
 In **`frontend/.env.local`** (restart `npm run dev` after edits):
 
@@ -2012,8 +2012,8 @@ NEXT_PUBLIC_ORCHESTRATOR_BASE_URL=http://10.0.0.1:8000
 NEXT_PUBLIC_AGENT_BASE_URLS=http://10.0.0.10:8010,http://10.0.0.11:8010
 ```
 
-- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** — Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
-- **`NEXT_PUBLIC_AGENT_BASE_URLS`** — Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
+- **`NEXT_PUBLIC_ORCHESTRATOR_BASE_URL`** - Must be reachable **from the browser** (use the hostname/IP the user’s machine can open).
+- **`NEXT_PUBLIC_AGENT_BASE_URLS`** - Comma-separated list **without spaces** (each segment is trimmed). The launch flow assigns slots in **round-robin** order: `slot-001` → first URL, `slot-002` → second, `slot-003` → first again, … (`frontend/src/components/simulation-chat.tsx`).
 
 If the UI runs on Server O but you browse from a laptop, both URLs above must still be valid: the **orchestrator** URL for the laptop’s browser, and the **agent** URLs for the **orchestrator**’s outbound HTTP.
 
@@ -2031,7 +2031,7 @@ To accept remote browsers on the dev server:
 npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
-### 5. UI — launch a job (same as single-host)
+### 5. UI - launch a job (same as single-host)
 
 1. Open the app (e.g. `http://10.0.0.1:3000` or your published URL).
 2. **Click** the main prompt textarea and **type** the simulation prompt.
@@ -2042,7 +2042,7 @@ The client **`POST`s `/jobs`**, then **`POST`s `/jobs/{job_id}/agents`** with on
 
 ### 6. Same job via HTTP only (debugging)
 
-**Create a job** (Windows `cmd` — use `^` for line continuation; on bash use `\`):
+**Create a job** (Windows `cmd` - use `^` for line continuation; on bash use `\`):
 
 ```bash
 curl -s -X POST http://10.0.0.1:8000/jobs -H "Content-Type: application/json" -d "{\"context\":\"demo\",\"prompt\":\"Hello multi-server\",\"agent_count\":4,\"rounds\":2,\"payout\":0.1}"
@@ -2081,12 +2081,12 @@ Replace `tests.fixtures.echo_agent` with any service that implements **`POST /v1
 
 ## How a job runs
 
-1. **`POST /jobs`** — Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
-2. **`POST /jobs/{job_id}/agents`** — Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
+1. **`POST /jobs`** - Creates a job (`pending`). Body fields match the plan: `context`, `prompt`, `agent_count`, `rounds`, `payout`, optional `embedding_model_version`.
+2. **`POST /jobs/{job_id}/agents`** - Register **exactly** `agent_count` slots (`slots` map). Each slot has `completion_base_url` (base only; the invoker appends `/v1/chat/completions`) and optional `bearer_token`, `external_participant_id` (stored for future payout aggregation; settlement is **per slot** today).
 3. When the **last** required slot is registered and the job is still `pending`, the **round engine** starts asynchronously (`running` → rounds → `completed` or `failed`).
-4. **`GET /jobs/{job_id}`** — Public status; when terminal, `settlement_preview` may be present.
-5. **`GET /jobs/{job_id}/operator`** — Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
-6. **`WS /ws/jobs/{job_id}`** — Subscribe **before** or after registration; events are queued per subscriber.
+4. **`GET /jobs/{job_id}`** - Public status; when terminal, `settlement_preview` may be present.
+5. **`GET /jobs/{job_id}/operator`** - Full audit (rounds, completions, embeddings metadata, edges, settlement). Optionally gated by `ORC_OPERATOR_TOKEN` + header `X-Operator-Token`.
+6. **`WS /ws/jobs/{job_id}`** - Subscribe **before** or after registration; events are queued per subscriber.
 
 **Storage:** in-memory only (`orchestrator/store.py`); restarting the process loses jobs.
 
@@ -2157,7 +2157,7 @@ Marks each completion **`valid`**, **`suspect`**, or **`pruned`** (streak-based 
 | `ORC_MINILM_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Hugging Face model id for MiniLM backend. |
 | `ORC_EMBED_BATCH_SIZE` | `32` | MiniLM batch encode size per round. |
 | `ORC_HASH_EMBED_DIM` | `384` | Vector dimension when backend is `hash` (matches MiniLM; override for experiments). |
-| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual–prompt cosine test. |
+| `ORC_WATCHDOG_RESIDUAL_PROMPT_COS_MAX` | `0.8` | Watchdog threshold for residual-prompt cosine test. |
 | `ORC_LAN_MODE` | `1` | When `1`, also allow CORS from private IPv4 LAN browser origins (any port). Set `0` to disable. |
 | `ORC_CORS_ORIGINS` | *(unset)* | Optional comma-separated exact origins; if unset, `http://localhost:3000` and `http://127.0.0.1:3000`. With **`ORC_LAN_MODE=1`**, private LAN IPs match via regex too. |
 
@@ -2174,12 +2174,12 @@ python scripts/run_distlm_sim.py ^
 
 (Use `\` line continuations on Unix shells.)
 
-- **`--embedding minilm`** — production-like vectors (slower; may download weights).
-- **`--embedding hash`** — default in script; fast.
-- **`--demo-prune`** — echo agent returns short text → watchdog → suspect / prune path.
-- **`--demo-refusal`** — canned refusal-like line → `possible_refusal` notes + streak behavior.
-- **`--json`** — print operator JSON only.
-- **`--temperature T`** — sets `ORC_TEMPERATURE` for that process.
+- **`--embedding minilm`** - production-like vectors (slower; may download weights).
+- **`--embedding hash`** - default in script; fast.
+- **`--demo-prune`** - echo agent returns short text → watchdog → suspect / prune path.
+- **`--demo-refusal`** - canned refusal-like line → `possible_refusal` notes + streak behavior.
+- **`--json`** - print operator JSON only.
+- **`--temperature T`** - sets `ORC_TEMPERATURE` for that process.
 
 The subprocess uses **`python -m uvicorn`**; ensure the same environment has `uvicorn` installed.
 
@@ -2273,16 +2273,16 @@ Details and stability notes: **[agentplan.md](agentplan.md)** and **[orcplan.md]
 
 ## Agent-side library (Python)
 
-**[`agent_backend/agent_invoke.py`](agent_backend/agent_invoke.py)** — call any OpenAI-compatible server with the same shape the orchestrator uses:
+**[`agent_backend/agent_invoke.py`](agent_backend/agent_invoke.py)** - call any OpenAI-compatible server with the same shape the orchestrator uses:
 
 - **`async def complete_distlm(...)`** → assistant **`str`** (raises **`DistLMInvokeError`** on failure).
 - **`return_raw=True`** → `(text, upstream_json_dict)`.
 - Defaults: `CHAT_COMPLETIONS_URL` via `OLLAMA_HOST` (default `http://127.0.0.1:11434`), model hardcoded to `qwen2.5:0.5b`.
 
-**[`agent_backend/test_invoke/app.py`](agent_backend/test_invoke/app.py)** — local FastAPI:
+**[`agent_backend/test_invoke/app.py`](agent_backend/test_invoke/app.py)** - local FastAPI:
 
-- **`GET /chat`** — browser UI to talk through your LLM.
-- **`POST /invoke`** — JSON body matching `InvokeBody`; forwards to the configured chat URL.
+- **`GET /chat`** - browser UI to talk through your LLM.
+- **`POST /invoke`** - JSON body matching `InvokeBody`; forwards to the configured chat URL.
 
 Run:
 
@@ -2394,7 +2394,7 @@ pytest -q
 For verbose output: `pytest tests/ -v`.
 
 - The `tests/` directory is a real Python package (`tests/__init__.py`) so `tests.fixtures.echo_agent` is not shadowed by unrelated third-party `tests` packages in site-packages.
-- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI — requires **`uvicorn`** for the subprocess (venv `Scripts` / `bin` on PATH, or `python -m uvicorn` where applicable).
+- **Integration** (`@pytest.mark.integration`): real HTTP echo agent + orchestrator ASGI - requires **`uvicorn`** for the subprocess (venv `Scripts` / `bin` on PATH, or `python -m uvicorn` where applicable).
 
 | File | Role |
 |------|------|
@@ -2425,9 +2425,9 @@ MiniLM-weight integration run: see **CLI simulation** (same `DISTLM_E2E_MINILM=1
 | `ORC_LAN_MODE` | `1` | When `1`, also allow CORS from private IPv4 LAN browser origins (any port). Set `0` to disable. |
 | `ORC_CORS_ORIGINS` | *(unset)* | Optional comma-separated exact origins; if unset, `http://localhost:3000` and `http://127.0.0.1:3000`. With **`ORC_LAN_MODE=1`**, private LAN IPs match via regex too. |
 
-**Echo agent subprocess** (sim / e2e only): `ECHO_AGENT_MODE` — unset = long answers; `short` | `refusal` for watchdog demos.
+**Echo agent subprocess** (sim / e2e only): `ECHO_AGENT_MODE` - unset = long answers; `short` | `refusal` for watchdog demos.
 
-**Agent invoke tester** (optional): `OLLAMA_HOST` — see [`agent_backend/agent_invoke.py`](agent_backend/agent_invoke.py). Model is hardcoded to `qwen2.5:0.5b`.
+**Agent invoke tester** (optional): `OLLAMA_HOST` - see [`agent_backend/agent_invoke.py`](agent_backend/agent_invoke.py). Model is hardcoded to `qwen2.5:0.5b`.
 
 ---
 

@@ -97,7 +97,7 @@ def setup_hf_cache() -> Path:
 
 class PersonaBlock(nn.Module):
     """
-    Input:  P  (B, 768, 384)  — pairwise product matrix
+    Input:  P  (B, 768, 384)  - pairwise product matrix
     Output: P' (B, 768, 384)
 
     For each of the 768 "rows" (GPT-2 dims), multiply every element in that

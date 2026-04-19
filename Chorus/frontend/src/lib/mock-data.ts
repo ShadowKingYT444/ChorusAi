@@ -34,15 +34,15 @@ const C2_ROLES = ['Critical Reviewer', 'Devil\'s Advocate', 'Counter-Analyst', '
 const C3_ROLES = ['Neutral Observer', 'Meta-Analyst', 'Data Scientist', 'Cross-Domain Expert', 'Framework Builder', 'Synthesis Lead', 'Calibration Analyst', 'Uncertainty Modeler', 'Evidence Weigher', 'Consensus Tracker', 'Methodology Reviewer']
 const C4_ROLES = ['Outlier Detector', 'Uncertainty Specialist', 'Tail-Risk Analyst', 'Edge Scenario Planner', 'Anomaly Hunter', 'Black Swan Analyst']
 
-const C1_STRATEGY = 'Building constructive thesis — assembling supporting evidence and primary analysis to form initial conclusions'
-const C2_STRATEGY = 'Adversarial review — identifying weaknesses, gaps, and counter-arguments to stress-test the primary analysis'
-const C3_STRATEGY = 'Neutral synthesis — withholding directional commitment until all evidence streams are weighed'
-const C4_STRATEGY = 'Uncertainty mapping — monitoring edge cases, tail risks, and scenarios others may underweight'
+const C1_STRATEGY = 'Building constructive thesis - assembling supporting evidence and primary analysis to form initial conclusions'
+const C2_STRATEGY = 'Adversarial review - identifying weaknesses, gaps, and counter-arguments to stress-test the primary analysis'
+const C3_STRATEGY = 'Neutral synthesis - withholding directional commitment until all evidence streams are weighed'
+const C4_STRATEGY = 'Uncertainty mapping - monitoring edge cases, tail risks, and scenarios others may underweight'
 
-const C1_WHY = 'Driving the initial analysis forward — aggregating signals and evidence to build a coherent thesis'
-const C2_WHY = 'Stress-testing the primary thesis — correlating counter-evidence to ensure robustness'
-const C3_WHY = 'Maintaining neutral stance — acting as an impartial arbiter between competing perspectives'
-const C4_WHY = 'Monitoring low-probability high-impact scenarios — preserving independent assessment of tail risks'
+const C1_WHY = 'Driving the initial analysis forward - aggregating signals and evidence to build a coherent thesis'
+const C2_WHY = 'Stress-testing the primary thesis - correlating counter-evidence to ensure robustness'
+const C3_WHY = 'Maintaining neutral stance - acting as an impartial arbiter between competing perspectives'
+const C4_WHY = 'Monitoring low-probability high-impact scenarios - preserving independent assessment of tail risks'
 
 function makeAgentInfo(idx: number, clusterId: ClusterID): AgentInfo {
   if (clusterId === 1) return { role: C1_ROLES[idx % C1_ROLES.length], strategy: C1_STRATEGY, connectionReason: C1_WHY }
@@ -88,7 +88,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.88)',
     colorDim: 'rgba(255,255,255,0.40)',
     agentCount: 19,
-    stance: 'Supportive — strong case for migration with phased approach',
+    stance: 'Supportive - strong case for migration with phased approach',
     confidence: 71,
   },
   {
@@ -97,7 +97,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.65)',
     colorDim: 'rgba(255,255,255,0.28)',
     agentCount: 14,
-    stance: 'Cautious — risks outweigh benefits given current constraints',
+    stance: 'Cautious - risks outweigh benefits given current constraints',
     confidence: 63,
   },
   {
@@ -106,7 +106,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.45)',
     colorDim: 'rgba(255,255,255,0.18)',
     agentCount: 11,
-    stance: 'Neutral — insufficient data to commit to a direction',
+    stance: 'Neutral - insufficient data to commit to a direction',
     confidence: 58,
   },
   {
@@ -115,7 +115,7 @@ export const CLUSTERS: Cluster[] = [
     color: 'rgba(255,255,255,0.30)',
     colorDim: 'rgba(255,255,255,0.12)',
     agentCount: 6,
-    stance: 'Risk-focused — underestimated failure modes need attention',
+    stance: 'Risk-focused - underestimated failure modes need attention',
     confidence: 44,
   },
 ]
@@ -132,7 +132,7 @@ export interface AgentNode {
 
 // 50 agents distributed across 4 clusters, laid out in rough cluster groups
 export const AGENT_NODES: AgentNode[] = [
-  // Cluster 1 — top-left region
+  // Cluster 1 - top-left region
   { id: 'a01', clusterId: 1, x: 120, y: 130, messageCount: 7 },
   { id: 'a02', clusterId: 1, x: 180, y: 95,  messageCount: 4 },
   { id: 'a03', clusterId: 1, x: 210, y: 165, messageCount: 9 },
@@ -152,7 +152,7 @@ export const AGENT_NODES: AgentNode[] = [
   { id: 'a17', clusterId: 1, x: 185, y: 110, messageCount: 4 },
   { id: 'a18', clusterId: 1, x: 115, y: 115, messageCount: 6 },
   { id: 'a19', clusterId: 1, x: 245, y: 220, messageCount: 8 },
-  // Cluster 2 — top-right region
+  // Cluster 2 - top-right region
   { id: 'a20', clusterId: 2, x: 520, y: 110, messageCount: 6 },
   { id: 'a21', clusterId: 2, x: 570, y: 155, messageCount: 4 },
   { id: 'a22', clusterId: 2, x: 600, y: 90,  messageCount: 9 },
@@ -167,7 +167,7 @@ export const AGENT_NODES: AgentNode[] = [
   { id: 'a31', clusterId: 2, x: 660, y: 135, messageCount: 12 },
   { id: 'a32', clusterId: 2, x: 605, y: 175, messageCount: 5 },
   { id: 'a33', clusterId: 2, x: 475, y: 115, messageCount: 7 },
-  // Cluster 3 — bottom-left region
+  // Cluster 3 - bottom-left region
   { id: 'a34', clusterId: 3, x: 130, y: 390, messageCount: 5 },
   { id: 'a35', clusterId: 3, x: 185, y: 420, messageCount: 3 },
   { id: 'a36', clusterId: 3, x: 220, y: 370, messageCount: 8 },
@@ -179,7 +179,7 @@ export const AGENT_NODES: AgentNode[] = [
   { id: 'a42', clusterId: 3, x: 270, y: 445, messageCount: 5 },
   { id: 'a43', clusterId: 3, x: 115, y: 400, messageCount: 2 },
   { id: 'a44', clusterId: 3, x: 235, y: 465, messageCount: 7 },
-  // Cluster 4 — bottom-right region
+  // Cluster 4 - bottom-right region
   { id: 'a45', clusterId: 4, x: 530, y: 390, messageCount: 8 },
   { id: 'a46', clusterId: 4, x: 580, y: 420, messageCount: 5 },
   { id: 'a47', clusterId: 4, x: 610, y: 370, messageCount: 11 },
@@ -231,7 +231,7 @@ export const AGENT_EDGES: LegacyFlowEdge[] = [
   { id: 'e-a46-a48', source: 'a46', target: 'a48', animated: false },
   { id: 'e-a47-a49', source: 'a47', target: 'a49', animated: true },
   { id: 'e-a50-a45', source: 'a50', target: 'a45', animated: false },
-  // Inter-cluster bridges (sparse — show cross-perspective debate)
+  // Inter-cluster bridges (sparse - show cross-perspective debate)
   { id: 'e-a12-a31', source: 'a12', target: 'a31', animated: false },
   { id: 'e-a16-a20', source: 'a16', target: 'a20', animated: false },
   { id: 'e-a19-a34', source: 'a19', target: 'a34', animated: false },
@@ -258,20 +258,20 @@ export interface AgentMessage {
 
 export const AGENT_MESSAGES: AgentMessage[] = [
   { id: 1,  agentId: 'a09', clusterId: 1, type: 'propose',  text: 'Service boundaries are well-defined in the current codebase. A phased migration starting with the auth module would limit risk while proving the pattern.',                round: 1, timestamp: '0:04' },
-  { id: 2,  agentId: 'a31', clusterId: 2, type: 'critique', text: 'Disagree — the team has 6 engineers. Operating a distributed system adds significant overhead that a small team cannot absorb.',                      round: 1, timestamp: '0:07', replyTo: 'a09' },
+  { id: 2,  agentId: 'a31', clusterId: 2, type: 'critique', text: 'Disagree - the team has 6 engineers. Operating a distributed system adds significant overhead that a small team cannot absorb.',                      round: 1, timestamp: '0:07', replyTo: 'a09' },
   { id: 3,  agentId: 'a12', clusterId: 1, type: 'agree',    text: 'Supporting a09\'s phased approach. The existing API gateway already handles routing, reducing migration friction.',                       round: 1, timestamp: '0:11' },
-  { id: 4,  agentId: 'a40', clusterId: 3, type: 'propose',  text: 'Holding neutral. We lack production latency data under load — decisions should wait until the profiling sprint completes.',                        round: 1, timestamp: '0:14' },
+  { id: 4,  agentId: 'a40', clusterId: 3, type: 'propose',  text: 'Holding neutral. We lack production latency data under load - decisions should wait until the profiling sprint completes.',                        round: 1, timestamp: '0:14' },
   { id: 5,  agentId: 'a47', clusterId: 4, type: 'propose',  text: 'Distributed tracing and observability gaps are underestimated. Incident response time could double without proper tooling.',                               round: 1, timestamp: '0:18' },
-  { id: 6,  agentId: 'a22', clusterId: 2, type: 'agree',    text: 'Confirming a31. The current CI/CD pipeline has no multi-service deployment support — that alone is a 2-month prerequisite.',                                    round: 1, timestamp: '0:21', replyTo: 'a31' },
+  { id: 6,  agentId: 'a22', clusterId: 2, type: 'agree',    text: 'Confirming a31. The current CI/CD pipeline has no multi-service deployment support - that alone is a 2-month prerequisite.',                                    round: 1, timestamp: '0:21', replyTo: 'a31' },
   { id: 7,  agentId: 'a16', clusterId: 1, type: 'critique', text: 'a47\'s tooling concern is valid but solvable. OpenTelemetry adoption is a weekend spike, not a blocker.',                              round: 1, timestamp: '0:25', replyTo: 'a47' },
   { id: 8,  agentId: 'a36', clusterId: 3, type: 'agree',    text: 'Neutral position holds. Need to see the dependency graph analysis before committing to a migration sequence.',                                  round: 1, timestamp: '0:29' },
-  { id: 9,  agentId: 'a03', clusterId: 1, type: 'cluster',  text: 'Cluster 1 forming consensus — phased migration is viable with existing infrastructure as a foundation.',                        round: 2, timestamp: '0:34' },
+  { id: 9,  agentId: 'a03', clusterId: 1, type: 'cluster',  text: 'Cluster 1 forming consensus - phased migration is viable with existing infrastructure as a foundation.',                        round: 2, timestamp: '0:34' },
   { id: 10, agentId: 'a31', clusterId: 2, type: 'critique', text: 'Cluster 1 underestimates operational complexity. Historical data: 7 of 10 similar migrations at this team size exceeded timeline by 3x.', round: 2, timestamp: '0:38' },
-  { id: 11, agentId: 'a09', clusterId: 1, type: 'critique', text: 'Those comparisons lack context — most did not have an existing API gateway. Our starting position is materially different.',                    round: 2, timestamp: '0:42', replyTo: 'a31' },
+  { id: 11, agentId: 'a09', clusterId: 1, type: 'critique', text: 'Those comparisons lack context - most did not have an existing API gateway. Our starting position is materially different.',                    round: 2, timestamp: '0:42', replyTo: 'a31' },
   { id: 12, agentId: 'a45', clusterId: 4, type: 'propose',  text: 'Cluster 2 raises valid concerns. Monitoring for scope creep: if the auth service extraction exceeds 4 weeks, the entire timeline fails.',  round: 2, timestamp: '0:46' },
   { id: 13, agentId: 'a40', clusterId: 3, type: 'agree',    text: 'Cluster 3 remaining neutral. Recommend a time-boxed proof of concept before full commitment.',                     round: 2, timestamp: '0:51' },
   { id: 14, agentId: 'a12', clusterId: 1, type: 'propose',  text: 'Developer velocity data shows 40% of PRs touch 3+ modules. Service isolation would reduce blast radius and review complexity.',                            round: 2, timestamp: '0:55' },
-  { id: 15, agentId: 'a22', clusterId: 2, type: 'cluster',  text: 'Cluster 2 internal consensus reached — migration is premature given current constraints. Confidence 63%.',             round: 2, timestamp: '1:00' },
+  { id: 15, agentId: 'a22', clusterId: 2, type: 'cluster',  text: 'Cluster 2 internal consensus reached - migration is premature given current constraints. Confidence 63%.',             round: 2, timestamp: '1:00' },
   { id: 16, agentId: 'a47', clusterId: 4, type: 'critique', text: 'Both clusters are overconfident. The unknown unknowns in data consistency across services are underpriced.',               round: 2, timestamp: '1:04' },
   { id: 17, agentId: 'a16', clusterId: 1, type: 'agree',    text: 'Cluster 1 final position: proceed with phased migration. Start with auth, validate in 4 weeks. Confidence 71%.',                               round: 3, timestamp: '1:09' },
   { id: 18, agentId: 'a31', clusterId: 2, type: 'critique', text: 'Cluster 1 underweights team capacity risk. Our recommendation: defer migration until headcount reaches 10. Confidence 63%.',                        round: 3, timestamp: '1:13', replyTo: 'a16' },

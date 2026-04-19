@@ -48,7 +48,7 @@ function cleanPredictionText(text: string): string {
     .trim()
 
   // Strip chatbot/meta openers
-  s = s.replace(CHATBOT_OPENER, '').replace(/^[:\-–,. ]+/, '').trim()
+  s = s.replace(CHATBOT_OPENER, '').replace(/^[:\--,. ]+/, '').trim()
   if (s.length > 0) s = s.charAt(0).toUpperCase() + s.slice(1)
 
   // Extract first complete sentence
@@ -192,7 +192,7 @@ export function buildResults(
     if (realMessages.length > 0) {
       const lastRound = Math.max(...realMessages.map(m => m.round))
       const lastRoundMsgs = realMessages.filter(m => m.round === lastRound)
-    // Prefer shortest message ≥ 40 chars — small models give more focused short answers
+    // Prefer shortest message ≥ 40 chars - small models give more focused short answers
       const candidates = lastRoundMsgs.filter(m => m.text.length >= 40)
       const best = candidates.length > 0
         ? candidates.reduce((a, b) => a.text.length <= b.text.length ? a : b)

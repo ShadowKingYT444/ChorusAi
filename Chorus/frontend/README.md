@@ -39,7 +39,7 @@ to `Chorus/frontend`.
 
 ## Scripts
 
-- `npm run dev` — start the Next dev server
-- `npm run build` — production build
-- `npm start` — run the production build locally
-- `npm run lint` — ESLint
+- `npm run dev` - start the Next dev server
+- `npm run build` - production build
+- `npm start` - run the production build locally
+- `npm run lint` - ESLint

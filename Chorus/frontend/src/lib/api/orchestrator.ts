@@ -283,7 +283,7 @@ export function normalizeOrchestratorBase(url: string): string {
   if (!s) return s
   // Add a scheme if missing. Bare domains/IPs would otherwise be treated as
   // relative paths by `fetch()` and resolve against the current Vercel origin
-  // (which returns 404 for unrelated paths — the most common cause of
+  // (which returns 404 for unrelated paths - the most common cause of
   // "/health 404" reports).
   if (!/^https?:\/\//i.test(s)) {
     const host = bareAuthorityHost(s)
@@ -407,7 +407,7 @@ function newRandomPeerToken(prefix: string): string {
 }
 
 /**
- * Stable peer id for the **prompter** (home / app / feed) — survives refresh, shared across tabs on purpose
+ * Stable peer id for the **prompter** (home / app / feed) - survives refresh, shared across tabs on purpose
  * so the same browser profile does not look like many prompters.
  */
 export function getOrCreatePeerId(): string {

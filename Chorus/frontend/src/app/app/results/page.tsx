@@ -80,7 +80,7 @@ function useCountUp(target: number, duration = 1400, delay = 0) {
     if (triggered.current) return
     triggered.current = true
 
-    // Respect prefers-reduced-motion — jump straight to final value
+    // Respect prefers-reduced-motion - jump straight to final value
     const prefersReduced =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -138,7 +138,7 @@ function ConfidenceGauge({ value }: { value: number }) {
         <circle cx={65} cy={65} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} />
         {/* Tick marks */}
         {GAUGE_TICKS_JSX}
-        {/* Arc — electric color with glow */}
+        {/* Arc - electric color with glow */}
         <motion.circle
           cx={65} cy={65} r={r}
           fill="none"
@@ -371,7 +371,7 @@ function RoundTimeline({
                 ROUND {round.round}
               </span>
               <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.20)', letterSpacing: '0.06em' }}>
-                {round.startTs}–{round.endTs}
+                {round.startTs}-{round.endTs}
               </span>
             </div>
 
@@ -658,7 +658,7 @@ function ResultsPageContent() {
             ref={costRef}
             style={{ paddingTop: '3.5rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}
           >
-            {/* Cost statement — left-aligned, two-column split */}
+            {/* Cost statement - left-aligned, two-column split */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', alignItems: 'center', marginBottom: '3rem' }}>
               {/* Left: cost copy */}
               <motion.div
@@ -703,7 +703,7 @@ function ResultsPageContent() {
                   {r.agentCount} agents · {r.rounds} rounds · {r.totalMessages.toLocaleString()} messages · {r.wallTimeSeconds}s
                 </p>
 
-                {/* Primary CTA — magnetic, filled white */}
+                {/* Primary CTA - magnetic, filled white */}
                 <motion.button
                   onClick={() => router.push('/')}
                   whileHover={{ scale: 1.02 }}
@@ -764,7 +764,7 @@ function ResultsPageContent() {
                 marginTop: '1rem', letterSpacing: '0.12em',
               }}
             >
-              WE&apos;RE NOT SCALING MODELS — WE&apos;RE SCALING MINDS.
+              WE&apos;RE NOT SCALING MODELS - WE&apos;RE SCALING MINDS.
             </motion.p>
           </div>
 

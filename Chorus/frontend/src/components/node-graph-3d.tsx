@@ -807,7 +807,7 @@ export default function NodeGraph3D({
             </div>
             <Divider />
             <Row k="Model" v={sel.model} />
-            <Row k="Address" v={sel.address ?? '—'} />
+            <Row k="Address" v={sel.address ?? '-'} />
             <div>
               <Label>CLUSTER</Label>
               <div
@@ -838,7 +838,7 @@ export default function NodeGraph3D({
                     lineHeight: 1.4,
                   }}
                 >
-                  {selectedClusterLabel ?? '—'}
+                  {selectedClusterLabel ?? '-'}
                 </span>
               </div>
             </div>

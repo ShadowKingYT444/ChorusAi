@@ -16,7 +16,7 @@ export interface SimulationSession extends SimulationJob {
 
 export interface RuntimeMessage extends AgentMessage {
   slotId: string
-  /** Signaling job id — included in feed dedupe so the same peer/text on a new job is not dropped. */
+  /** Signaling job id - included in feed dedupe so the same peer/text on a new job is not dropped. */
   jobId?: string
   status?: PruneStatus
 }

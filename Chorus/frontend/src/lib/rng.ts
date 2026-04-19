@@ -37,7 +37,7 @@ export class RNG {
     return arr[this.int(0, arr.length - 1)];
   }
 
-  /** Fisher-Yates shuffle — mutates the array in place */
+  /** Fisher-Yates shuffle - mutates the array in place */
   shuffle<T>(arr: T[]): T[] {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = this.int(0, i);

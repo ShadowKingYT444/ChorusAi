@@ -29,7 +29,7 @@ export function TopBar() {
       }}
       role="banner"
     >
-      {/* Left — logotype */}
+      {/* Left - logotype */}
       <motion.div
         whileTap={{ scale: reducedMotion ? 1 : 0.97 }}
         transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
@@ -54,7 +54,7 @@ export function TopBar() {
         </Link>
       </motion.div>
 
-      {/* Center — nav & context */}
+      {/* Center - nav & context */}
       <div className="flex flex-1 items-center justify-center gap-8 overflow-hidden">
         <nav
           className="flex items-center rounded-sm overflow-hidden shrink-0 relative"
@@ -110,7 +110,7 @@ export function TopBar() {
         )}
       </div>
 
-      {/* Right — status (static dot — always online, no decorative pulse) */}
+      {/* Right - status (static dot - always online, no decorative pulse) */}
       <div className="flex items-center gap-2 w-[200px] justify-end">
         <span
           className="w-1.5 h-1.5 rounded-full shrink-0"

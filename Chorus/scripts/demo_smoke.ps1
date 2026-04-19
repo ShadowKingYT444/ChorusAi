@@ -1,6 +1,6 @@
 # demo_smoke.ps1
 # Asserts orchestrator + echo agent + persistence work end-to-end.
-# Ollama is NOT required — smoke uses the echo fixture agent.
+# Ollama is NOT required - smoke uses the echo fixture agent.
 
 $ErrorActionPreference = "Stop"
 

@@ -86,7 +86,7 @@ def _start_echo_agent(port: int, *, echo_mode: str | None) -> subprocess.Popen:
 def _print_human(op: dict[str, Any]) -> None:
     print()
     print("=" * 72)
-    print("CHORUS SIM — operator view")
+    print("CHORUS SIM - operator view")
     print("=" * 72)
     print(f"job_id:   {op.get('job_id')}")
     print(f"status:   {op.get('status')}")
@@ -127,7 +127,7 @@ def _print_human(op: dict[str, Any]) -> None:
     print("-" * 72)
     sp = op.get("settlement_preview")
     if sp is None:
-        print("  (none — job may not have finished settlement)")
+        print("  (none - job may not have finished settlement)")
     else:
         print(json.dumps(sp, indent=2))
     print()

@@ -1,7 +1,7 @@
 """
 Chorus-shaped call to Ollama's OpenAI-compatible POST /v1/chat/completions endpoint.
 
-Primary API: `complete_chorus` — pass persona, context, prompt, etc.; get assistant text back.
+Primary API: `complete_chorus` - pass persona, context, prompt, etc.; get assistant text back.
 Pass `return_raw=True` to also receive the parsed upstream JSON dict (e.g. for HTTP debug responses).
 """
 

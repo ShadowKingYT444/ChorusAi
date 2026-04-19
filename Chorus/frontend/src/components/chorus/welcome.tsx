@@ -21,7 +21,7 @@ const SUGGESTIONS: { icon: React.ReactNode; title: string; prompt: string }[] = 
   {
     icon: <Flame className="w-3.5 h-3.5" />,
     title: 'High-stakes',
-    prompt: 'An AI triage tool for a rural clinic with intermittent internet — what would you require before go-live, and what would you refuse to ship at all?',
+    prompt: 'An AI triage tool for a rural clinic with intermittent internet - what would you require before go-live, and what would you refuse to ship at all?',
   },
   {
     icon: <Sparkles className="w-3.5 h-3.5" />,

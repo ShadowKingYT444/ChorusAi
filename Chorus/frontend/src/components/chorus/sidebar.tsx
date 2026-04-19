@@ -99,7 +99,7 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         {sorted.length === 0 ? (
           <div className="px-3 py-4 font-sans text-[11.5px] text-white/35 leading-relaxed">
-            No past chats yet. Send a prompt to the chorus — it will save here.
+            No past chats yet. Send a prompt to the chorus - it will save here.
           </div>
         ) : (
           sorted.map((c, i) => {

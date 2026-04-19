@@ -219,7 +219,7 @@ function MessageCard({ msg, isNew }: { msg: AgentMessage; isNew: boolean }) {
         <ProgressiveText text={msg.text} />
       </p>
 
-      {/* Footer — cluster name + expand hint */}
+      {/* Footer - cluster name + expand hint */}
       <div style={{ display: 'flex', alignItems: 'center', marginTop: 6, paddingLeft: 11 }}>
         <span style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(255,255,255,0.20)' }}>
           {CLUSTERS.find(c => c.id === msg.clusterId)?.name}

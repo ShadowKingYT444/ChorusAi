@@ -18,7 +18,7 @@ class EmbeddingService:
     Embeddings for kNN / impact.
 
     - **minilm** (default): `sentence-transformers` + `all-MiniLM-L6-v2` (override with `ORC_MINILM_MODEL`).
-    - **hash**: deterministic vectors (no ML deps); default dim **384** (same as MiniLM) — override with `ORC_HASH_EMBED_DIM`.
+    - **hash**: deterministic vectors (no ML deps); default dim **384** (same as MiniLM) - override with `ORC_HASH_EMBED_DIM`.
     """
 
     def __init__(self, dimension: int | None = None) -> None:

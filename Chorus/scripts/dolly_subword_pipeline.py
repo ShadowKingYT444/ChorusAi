@@ -5,15 +5,15 @@ End-to-end Dolly 15k → CSV → ByteLevel BPE subword vocab → token-ID JSONL 
 **Download / read:** same NDJSON source as `export_dolly_prompt_response.py` (Hugging Face),
 via Polars `hf://...`, unless `--csv` points at an existing CSV (skip HF).
 
-**Train:** Hugging Face `tokenizers` ByteLevel BPE (GPT-2–style bytes + merges). Spaces and
+**Train:** Hugging Face `tokenizers` ByteLevel BPE (GPT-2-style bytes + merges). Spaces and
 punctuation are **inside** subword pieces (no separate space_id table like `csv_to_token_ids.py`).
 
 **Outputs (under `--out-dir`):**
-  - `dolly_prompt_response.csv` — unless `--csv` is set (then vocab/jsonl still use that file)
-  - `dolly_subword_tokenizer.json` — full tokenizer (use this to decode IDs exactly)
-  - `dolly_subword_vocab.json` — same shape as `dolly_vocab.json`: `{"vocabulary":[{"word","id"},...],"size":N}`
-  - `dolly_subword_token_ids.jsonl` — one object per row: `{"prompt_ids":[...],"response_ids":[...]}`
-  - `dolly_subword_token_ids_meta.json` — paths, sizes, special token ids
+  - `dolly_prompt_response.csv` - unless `--csv` is set (then vocab/jsonl still use that file)
+  - `dolly_subword_tokenizer.json` - full tokenizer (use this to decode IDs exactly)
+  - `dolly_subword_vocab.json` - same shape as `dolly_vocab.json`: `{"vocabulary":[{"word","id"},...],"size":N}`
+  - `dolly_subword_token_ids.jsonl` - one object per row: `{"prompt_ids":[...],"response_ids":[...]}`
+  - `dolly_subword_token_ids_meta.json` - paths, sizes, special token ids
 
 Install (once):
 
