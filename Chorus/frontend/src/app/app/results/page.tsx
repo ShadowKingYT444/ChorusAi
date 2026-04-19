@@ -257,11 +257,23 @@ const TYPE_COLORS = {
   cluster: 'rgba(100,160,255,0.75)',
 } as const
 
-function RoundTimeline({ messages }: { messages: AgentMessage[] }) {
+function RoundTimeline({
+  messages,
+  totalRounds,
+}: {
+  messages: AgentMessage[]
+  totalRounds: number
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: '-40px' })
 
-  const rounds = ([1, 2, 3] as const).map(r => {
+  const roundCount = Math.max(
+    1,
+    totalRounds,
+    ...messages.map((m) => m.round),
+  )
+  const rounds = Array.from({ length: roundCount }, (_, index) => {
+    const r = index + 1
     const rMsgs = messages.filter(m => m.round === r)
     const types = {
       propose: rMsgs.filter(m => m.type === 'propose').length,
@@ -306,7 +318,7 @@ function RoundTimeline({ messages }: { messages: AgentMessage[] }) {
             </div>
 
             <div style={{ fontFamily: SANS, fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.72)', marginBottom: 2 }}>
-              {ROUND_LABELS[i]}
+              {ROUND_LABELS[i] ?? `Round ${round.round}`}
             </div>
             <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', marginBottom: 16 }}>
               {round.count} messages
@@ -428,8 +440,8 @@ function ResultsPageContent() {
   const hasMessages = runtime.messages.length > 0
   const messages = useDeferredValue(runtime.messages)
   const r = useMemo(
-    () => buildResults(runtime.session, messages, runtime.settlement),
-    [runtime.session, messages, runtime.settlement],
+    () => buildResults(runtime.session, messages, runtime.settlement, runtime.finalAnswer),
+    [runtime.session, messages, runtime.settlement, runtime.finalAnswer],
   )
   const clusters = useMemo(
     () => buildClustersFromMessages(messages, runtime.session?.agentCount ?? 0),
@@ -592,7 +604,7 @@ function ResultsPageContent() {
           </motion.div>
 
           {/* ── Section 2b: Round Timeline ── */}
-          <RoundTimeline messages={messages} />
+          <RoundTimeline messages={messages} totalRounds={runtime.totalRounds} />
 
           {/* ── Section 2c: Top Agents ── */}
           <TopAgents agents={topAgents} />

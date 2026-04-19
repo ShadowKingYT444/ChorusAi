@@ -27,6 +27,8 @@ type LaunchParticipant = {
   completionBaseUrl: string
 }
 
+const SYNTHETIC_LOCAL_PEER_ID = 'local-ollama'
+
 function buildLaunchParticipants(
   peers: PeerEntry[],
   requestedVoices: number,
@@ -41,7 +43,14 @@ function buildLaunchParticipants(
       return a.peer_id.localeCompare(b.peer_id)
     })
 
-  const live = addressedPeers.slice(0, requestedVoices).map((peer) => ({
+  const livePeers = addressedPeers.filter((peer) => peer.peer_id !== SYNTHETIC_LOCAL_PEER_ID)
+  const fallbackPeers = addressedPeers.filter((peer) => peer.peer_id === SYNTHETIC_LOCAL_PEER_ID)
+  const prioritizedPeers =
+    livePeers.length >= requestedVoices
+      ? livePeers
+      : [...livePeers, ...fallbackPeers]
+
+  const live = prioritizedPeers.slice(0, requestedVoices).map((peer) => ({
     peer,
     completionBaseUrl: peer.address?.trim() ?? '',
   }))
@@ -194,6 +203,8 @@ export function ChorusAppShell() {
           }
         }
         const consensus = jobWs.finalAnswer ?? turn.consensus
+        const currentRound = Math.max(1, jobWs.currentRound || turn.currentRound || 1)
+        const totalRounds = Math.max(currentRound, turn.totalRounds ?? rounds)
         const sameResponses =
           responses.length === baseResponses.length &&
           responses.every((r, i) => {
@@ -206,11 +217,18 @@ export function ChorusAppShell() {
               old.latencyMs === r.latencyMs
             )
           })
-        if (sameResponses && consensus === turn.consensus) return turn
-        return { ...turn, responses, consensus }
+        if (
+          sameResponses &&
+          consensus === turn.consensus &&
+          currentRound === (turn.currentRound ?? 1) &&
+          totalRounds === (turn.totalRounds ?? rounds)
+        ) {
+          return turn
+        }
+        return { ...turn, responses, consensus, currentRound, totalRounds }
       }),
     )
-  }, [jobWs.lines, jobWs.finalAnswer])
+  }, [jobWs.currentRound, jobWs.finalAnswer, jobWs.lines, rounds])
 
   const send = useCallback(async () => {
     if (!draft.trim() || sending) return
@@ -283,6 +301,8 @@ export function ChorusAppShell() {
           role: 'chorus',
           voicesRequested: launchPlan.participants.length,
           responses: initialResponses,
+          currentRound: 1,
+          totalRounds: rounds,
           createdAt: now + 1,
         },
       ])

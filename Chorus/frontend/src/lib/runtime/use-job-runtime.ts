@@ -80,7 +80,7 @@ function defaultState(session: SimulationSession | null): JobRuntimeState {
     totalRounds: session?.rounds ?? 0,
     messages: [],
     clusters: EMPTY_CLUSTERS,
-    results: session ? buildResults(session, [], null) : EMPTY_RESULTS,
+    results: session ? buildResults(session, [], null, null) : EMPTY_RESULTS,
     settlement: null,
     operator: null,
     loading: true,
@@ -196,7 +196,7 @@ export function useJobRuntime(jobIdFromRoute?: string | null): JobRuntimeState {
     if (!effectiveSession) return defaultState(null)
 
     const clusters = buildClustersFromMessages(messages, effectiveSession.agentCount)
-    const results = buildResults(effectiveSession, messages, jobWs.settlement)
+    const results = buildResults(effectiveSession, messages, jobWs.settlement, jobWs.finalAnswer)
     const status: JobStatus = backendEnabled && jobWs.status !== 'pending' ? jobWs.status : 'pending'
 
     return {

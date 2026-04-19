@@ -377,6 +377,40 @@ def _scenario_set(args: argparse.Namespace) -> list[DemoScenario]:
     return scenarios[: args.demo_jobs]
 
 
+def _operator_headers() -> dict[str, str]:
+    token = os.environ.get("ORC_OPERATOR_TOKEN", "").strip()
+    return {"X-Operator-Token": token} if token else {}
+
+
+async def _load_demo_job_summary(
+    client: httpx.AsyncClient,
+    *,
+    job_id: str,
+    latest_job: dict[str, Any],
+) -> dict[str, Any]:
+    operator_resp = await client.get(
+        f"/jobs/{job_id}/operator",
+        headers=_operator_headers(),
+    )
+    if operator_resp.status_code == 200:
+        return operator_resp.json()
+    if operator_resp.status_code not in {401, 403}:
+        operator_resp.raise_for_status()
+
+    chat_resp = await client.get(f"/chats/{job_id}")
+    chat_resp.raise_for_status()
+    chat = chat_resp.json()
+    return {
+        "job_id": job_id,
+        "status": latest_job.get("status"),
+        "current_round": latest_job.get("current_round"),
+        "final_answer": chat.get("final_answer"),
+        "citations": chat.get("citations") or latest_job.get("citations") or [],
+        "settlement_preview": latest_job.get("settlement_preview"),
+        "rounds": [],
+    }
+
+
 async def _run_demo_job(
     client: httpx.AsyncClient,
     *,
@@ -425,9 +459,7 @@ async def _run_demo_job(
             "to avoid MiniLM warm-up/download delays during demos."
         )
 
-    operator_resp = await client.get(f"/jobs/{job_id}/operator")
-    operator_resp.raise_for_status()
-    operator = operator_resp.json()
+    operator = await _load_demo_job_summary(client, job_id=job_id, latest_job=latest)
     final_answer = str(operator.get("final_answer") or "").strip()
     logger.info(
         "[demo-job:%s] completed; final_answer=%s",

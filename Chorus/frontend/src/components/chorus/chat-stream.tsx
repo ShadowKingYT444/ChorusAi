@@ -19,6 +19,8 @@ export interface ChatTurn {
   voicesRequested?: number
   responses?: AgentResponse[]
   consensus?: string
+  currentRound?: number
+  totalRounds?: number
   createdAt: number
 }
 
@@ -101,6 +103,9 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
   const responses = turn.responses ?? []
   const total = turn.voicesRequested ?? responses.length
   const done = responses.filter((r) => r.status === 'done').length
+  const currentRound = turn.currentRound ?? 1
+  const totalRounds = Math.max(currentRound, turn.totalRounds ?? currentRound)
+  const progressPct = totalRounds > 0 ? (currentRound / totalRounds) * 100 : 0
 
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="w-full">
@@ -118,6 +123,9 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
         <span className="font-mono text-[10.5px] tracking-[0.08em] uppercase">
           Chorus · {done}/{total} replied
         </span>
+        <span className="font-mono text-[10px] text-white/40 tracking-[0.08em] uppercase">
+          Round {currentRound}/{totalRounds}
+        </span>
         {done < total && (
           <motion.span
             className="w-1.5 h-1.5 rounded-full bg-white/60"
@@ -125,6 +133,22 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
             transition={{ duration: 1.4, repeat: Infinity }}
           />
         )}
+      </div>
+
+      <div
+        className="mb-3 h-1.5 overflow-hidden rounded-full"
+        style={{ background: 'rgba(255,255,255,0.06)' }}
+      >
+        <motion.div
+          className="h-full rounded-full"
+          animate={{ width: `${progressPct}%` }}
+          transition={{ type: 'spring', stiffness: 220, damping: 26 }}
+          style={{
+            background:
+              'linear-gradient(90deg, rgba(180,200,255,0.45), rgba(255,255,255,0.9))',
+            boxShadow: '0 0 14px rgba(180,200,255,0.25)',
+          }}
+        />
       </div>
 
       {/* Voice cards */}

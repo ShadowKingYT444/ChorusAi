@@ -165,6 +165,7 @@ export function buildResults(
   session: SimulationSession | null,
   messages: RuntimeMessage[],
   settlement: SettlementPreview | null,
+  finalAnswer?: string | null,
 ): SimulationResults {
   if (!session) {
     return {
@@ -181,18 +182,23 @@ export function buildResults(
   }
 
   let finalPrediction = 'Consensus still forming. Awaiting more agent outputs.'
-  const realMessages = messages.filter(
-    m => m.type !== 'cluster' && m.text && m.text !== '(no content)',
-  )
-  if (realMessages.length > 0) {
-    const lastRound = Math.max(...realMessages.map(m => m.round))
-    const lastRoundMsgs = realMessages.filter(m => m.round === lastRound)
+  const normalizedFinalAnswer = finalAnswer?.trim()
+  if (normalizedFinalAnswer) {
+    finalPrediction = normalizedFinalAnswer
+  } else {
+    const realMessages = messages.filter(
+      m => m.type !== 'cluster' && m.text && m.text !== '(no content)',
+    )
+    if (realMessages.length > 0) {
+      const lastRound = Math.max(...realMessages.map(m => m.round))
+      const lastRoundMsgs = realMessages.filter(m => m.round === lastRound)
     // Prefer shortest message ≥ 40 chars — small models give more focused short answers
-    const candidates = lastRoundMsgs.filter(m => m.text.length >= 40)
-    const best = candidates.length > 0
-      ? candidates.reduce((a, b) => a.text.length <= b.text.length ? a : b)
-      : lastRoundMsgs.reduce((a, b) => b.text.length > a.text.length ? b : a)
-    finalPrediction = cleanPredictionText(best.text)
+      const candidates = lastRoundMsgs.filter(m => m.text.length >= 40)
+      const best = candidates.length > 0
+        ? candidates.reduce((a, b) => a.text.length <= b.text.length ? a : b)
+        : lastRoundMsgs.reduce((a, b) => b.text.length > a.text.length ? b : a)
+      finalPrediction = cleanPredictionText(best.text)
+    }
   }
 
   const nodesContributing = new Set(messages.map((m) => m.slotId)).size
