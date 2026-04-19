@@ -37,7 +37,7 @@ import httpx
 import websockets
 from websockets.asyncio.client import ClientConnection
 
-from orchestrator.demo_agent import SCRIPTED_DEMO_ANSWERS, SCRIPTED_TRIGGER
+from orchestrator.demo_agent import scripted_demo_answer_for
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,7 +65,7 @@ class DemoScenario:
     label: str
     context: str
     prompt: str
-    rounds: int = 2
+    rounds: int = 3
     payout: float = 100.0
 
 
@@ -79,15 +79,17 @@ AGENTS: list[FakeAgent] = [
 
 DEFAULT_SCENARIOS: list[DemoScenario] = [
     DemoScenario(
-        label="rural-clinic",
+        label="midnight-auth-outage",
         context=(
-            "The product team wants to pilot an AI triage assistant in a rural "
-            "clinic with intermittent internet, one on-site nurse, and limited "
-            "budget for hardware support."
+            "A SaaS team shipped a release that broke authentication for roughly "
+            "forty percent of users. It is after midnight, CI is red, rollback might "
+            "interact badly with fresh migrations, and leadership wants a local chorus "
+            "of coding agents to help the on-call engineer choose the safest next move."
         ),
         prompt=(
-            "What should we do before shipping an AI triage workflow for a rural "
-            "clinic, and what is the smallest safe pilot?"
+            "In a live midnight auth outage, should we trust a chorus of local coding "
+            "agents to choose between rollback, feature-flag disable, or hotfix, and "
+            "what exact operating model keeps that from becoming a disaster?"
         ),
     ),
     DemoScenario(
@@ -182,11 +184,9 @@ def _make_signaling_reply(
     prompt: str,
     persona_hint: str | None,
 ) -> str:
-    lowered = prompt.lower()
-    if SCRIPTED_TRIGGER in lowered:
-        scripted = SCRIPTED_DEMO_ANSWERS.get(agent.peer_id)
-        if scripted:
-            return scripted
+    scripted = scripted_demo_answer_for(prompt, agent.peer_id)
+    if scripted:
+        return scripted
 
     focus = _focus_text(prompt) or "the operator's request"
     style_bank = _PERSONA_REPLY_STYLES[agent.persona_label]
@@ -588,8 +588,8 @@ def main() -> None:
     parser.add_argument(
         "--rounds",
         type=int,
-        default=2,
-        help="Rounds for a custom auto-created demo job (default: 2).",
+        default=3,
+        help="Rounds for a custom auto-created demo job (default: 3).",
     )
     parser.add_argument(
         "--payout",

@@ -12,12 +12,18 @@ export interface AgentResponse {
   status: 'thinking' | 'streaming' | 'done' | 'error'
 }
 
+export interface ChorusRoundState {
+  round: number
+  responses: AgentResponse[]
+}
+
 export interface ChatTurn {
   id: string
   role: 'user' | 'chorus'
   text?: string
   voicesRequested?: number
   responses?: AgentResponse[]
+  roundStates?: ChorusRoundState[]
   consensus?: string
   currentRound?: number
   totalRounds?: number
@@ -37,6 +43,24 @@ function hashColor(peerId: string) {
   let h = 0
   for (let i = 0; i < peerId.length; i++) h = (h * 31 + peerId.charCodeAt(i)) >>> 0
   return AGENT_COLORS[h % AGENT_COLORS.length]
+}
+
+function getRoundStates(turn: ChatTurn): ChorusRoundState[] {
+  if (turn.roundStates?.length) {
+    return [...turn.roundStates]
+      .sort((a, b) => a.round - b.round)
+      .map((roundState) => ({
+        round: roundState.round,
+        responses: roundState.responses ?? [],
+      }))
+  }
+
+  return [
+    {
+      round: Math.max(1, turn.currentRound ?? 1),
+      responses: turn.responses ?? [],
+    },
+  ]
 }
 
 export function ChorusChatStream({ turns }: { turns: ChatTurn[] }) {
@@ -100,10 +124,19 @@ function UserTurn({ text }: { text: string }) {
 }
 
 function ChorusTurn({ turn }: { turn: ChatTurn }) {
-  const responses = turn.responses ?? []
+  const roundStates = getRoundStates(turn)
+  const currentRound = turn.currentRound ?? roundStates.at(-1)?.round ?? 1
+  const activeRound =
+    roundStates.find((roundState) => roundState.round === currentRound) ??
+    roundStates.at(-1) ?? {
+      round: currentRound,
+      responses: [],
+    }
+  const responses = activeRound.responses
   const total = turn.voicesRequested ?? responses.length
-  const done = responses.filter((r) => r.status === 'done').length
-  const currentRound = turn.currentRound ?? 1
+  const replied = responses.filter(
+    (response) => response.text.trim().length > 0 || response.latencyMs != null,
+  ).length
   const totalRounds = Math.max(currentRound, turn.totalRounds ?? currentRound)
   const progressPct = totalRounds > 0 ? (currentRound / totalRounds) * 100 : 0
 
@@ -121,12 +154,12 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
           <Cpu className="w-3 h-3 text-white/85" />
         </span>
         <span className="font-mono text-[10.5px] tracking-[0.08em] uppercase">
-          Chorus · {done}/{total} replied
+          Chorus · {replied}/{total} replied
         </span>
         <span className="font-mono text-[10px] text-white/40 tracking-[0.08em] uppercase">
           Round {currentRound}/{totalRounds}
         </span>
-        {done < total && (
+        {replied < total && (
           <motion.span
             className="w-1.5 h-1.5 rounded-full bg-white/60"
             animate={{ opacity: [0.3, 1, 0.3] }}
@@ -152,33 +185,66 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
       </div>
 
       {/* Voice cards */}
-      <div className="grid gap-2 md:grid-cols-2">
-        <AnimatePresence initial={false}>
-          {responses.map((r, i) => (
-            <VoiceCard key={r.peerId + i} response={r} />
-          ))}
-          {Array.from({ length: Math.max(0, total - responses.length) }).map((_, i) => (
-            <motion.div
-              key={`pending-${i}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="rounded-xl px-3.5 py-3 h-[76px] flex items-center gap-2"
+      <div className="flex flex-col gap-3">
+        {roundStates.map((roundState) => {
+          const roundReplied = roundState.responses.filter(
+            (response) => response.text.trim().length > 0 || response.latencyMs != null,
+          ).length
+          const isActiveRound = roundState.round === currentRound
+          const pendingCount = isActiveRound ? Math.max(0, total - roundState.responses.length) : 0
+
+          return (
+            <div
+              key={`round-${roundState.round}`}
+              className="rounded-2xl px-3.5 py-3"
               style={{
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px dashed rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.025)',
+                border: '1px solid rgba(255,255,255,0.06)',
               }}
             >
-              <motion.span
-                className="w-2 h-2 rounded-full bg-white/45"
-                animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
-                transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.12 }}
-              />
-              <span className="font-mono text-[10.5px] text-white/35 tracking-[0.08em] uppercase">
-                awaiting voice…
-              </span>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] text-white/60 tracking-[0.12em] uppercase">
+                  Round {roundState.round}
+                </span>
+                <span className="font-mono text-[10px] text-white/40 tracking-[0.08em] uppercase">
+                  {roundReplied}/{total} replied
+                </span>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <AnimatePresence initial={false}>
+                  {roundState.responses.map((response, index) => (
+                    <VoiceCard
+                      key={`${roundState.round}-${response.peerId}-${index}`}
+                      response={response}
+                    />
+                  ))}
+                  {Array.from({ length: pendingCount }).map((_, index) => (
+                    <motion.div
+                      key={`pending-${roundState.round}-${index}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="rounded-xl px-3.5 py-3 h-[76px] flex items-center gap-2"
+                      style={{
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px dashed rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      <motion.span
+                        className="w-2 h-2 rounded-full bg-white/45"
+                        animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.12 }}
+                      />
+                      <span className="font-mono text-[10.5px] text-white/35 tracking-[0.08em] uppercase">
+                        awaiting voice…
+                      </span>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Consensus */}

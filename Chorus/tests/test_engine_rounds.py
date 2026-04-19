@@ -89,3 +89,43 @@ async def test_run_job_executes_all_rounds_before_merge() -> None:
         "slot-b",
     ]
     assert merge_rounds == [[1, 2]]
+
+@pytest.mark.anyio
+async def test_demo_fallback_merge_uses_real_slot_citations() -> None:
+    store = JobStore()
+    engine = RoundEngine(store)
+    fake_invoker = _FakeInvoker()
+    engine.invoker = fake_invoker
+    engine.embedder = _FakeEmbedder()
+
+    job = await store.create_job(
+        CreateJobRequest(
+            context="ctx",
+            prompt=(
+                "In a live midnight auth outage, should we trust a chorus of local coding agents "
+                "to choose between rollback, feature-flag disable, or hotfix, and what exact "
+                "operating model keeps that from becoming a disaster?"
+            ),
+            agent_count=2,
+            rounds=2,
+            payout=0.0,
+        )
+    )
+    await store.register_agents(
+        job.job_id,
+        RegisterAgentsRequest(
+            slots={
+                "atlas-skeptic": SlotRegistration(completion_base_url="demo://atlas-skeptic"),
+                "quasar-engineer": SlotRegistration(completion_base_url="demo://quasar-engineer"),
+            }
+        ),
+    )
+
+    await engine._run_job(job.job_id)
+
+    final_job = await store.get_job(job.job_id)
+    assert final_job is not None
+    assert final_job.final_answer is not None
+    assert "[atlas-skeptic]" in final_job.final_answer
+    assert "[quasar-engineer]" in final_job.final_answer
+    assert set(final_job.citations) >= {"atlas-skeptic", "quasar-engineer"}

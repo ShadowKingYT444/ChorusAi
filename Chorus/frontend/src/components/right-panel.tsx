@@ -12,12 +12,11 @@ const TYPE_CONFIG: Record<AgentMessage['type'], {
   label: string
   alpha: number
   barAlpha: number
-  description: string
 }> = {
-  propose:  { label: 'PROPOSE',  alpha: 0.82, barAlpha: 0.70, description: 'New thesis introduced' },
-  critique: { label: 'CRITIQUE', alpha: 0.60, barAlpha: 0.45, description: 'Counter-argument' },
-  agree:    { label: 'AGREE',    alpha: 0.40, barAlpha: 0.28, description: 'Consensus signal' },
-  cluster:  { label: 'EVENT',    alpha: 0.95, barAlpha: 0.90, description: 'Network event' },
+  propose:  { label: 'PROPOSE',  alpha: 0.82, barAlpha: 0.70 },
+  critique: { label: 'CRITIQUE', alpha: 0.60, barAlpha: 0.45 },
+  agree:    { label: 'AGREE',    alpha: 0.40, barAlpha: 0.28 },
+  cluster:  { label: 'EVENT',    alpha: 0.95, barAlpha: 0.90 },
 }
 
 type FilterType = 'all' | AgentMessage['type']
@@ -96,6 +95,33 @@ function ClusterBanner({ text }: { text: string }) {
         {text}
       </p>
     </motion.div>
+  )
+}
+
+function ProgressiveText({
+  text,
+  charsPerSecond = 180,
+}: {
+  text: string
+  charsPerSecond?: number
+}) {
+  const duration = Math.max(0.35, text.length / Math.max(1, charsPerSecond))
+  return (
+    <motion.span
+      key={text}
+      initial={{ width: 0, opacity: 0.72 }}
+      animate={{ width: `${Math.max(1, text.length)}ch`, opacity: 1 }}
+      transition={{ duration, ease: 'linear' }}
+      style={{
+        display: 'inline-block',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        verticalAlign: 'bottom',
+        whiteSpace: 'pre-wrap',
+      }}
+    >
+      {text}
+    </motion.span>
   )
 }
 
@@ -190,7 +216,7 @@ function MessageCard({ msg, isNew }: { msg: AgentMessage; isNew: boolean }) {
           WebkitBoxOrient: 'vertical',
         } : {}),
       } as React.CSSProperties}>
-        {msg.text}
+        <ProgressiveText text={msg.text} />
       </p>
 
       {/* Footer — cluster name + expand hint */}
@@ -253,44 +279,16 @@ export function RightPanel({
   settlement?: SettlementPreview | null
 }) {
   const sourceMessages = messages ?? []
-  const [visibleCount, setVisibleCount] = useState(0)
   const [filter, setFilter] = useState<FilterType>('all')
   const feedRef = useRef<HTMLDivElement>(null)
-  const prevCount = useRef(0)
-  const prevSourceLenRef = useRef(0)
-
-  // New job / cleared feed: drop stagger so we do not flash stale cards.
-  useEffect(() => {
-    const len = sourceMessages.length
-    if (len < prevSourceLenRef.current) {
-      setVisibleCount(0)
-    }
-    prevSourceLenRef.current = len
-  }, [sourceMessages.length])
-
-  // Live backend: show the full transcript immediately (multi-agent bursts are common).
-  useEffect(() => {
-    if (!live) return
-    setVisibleCount(sourceMessages.length)
-  }, [live, sourceMessages.length])
-
-  // Mock / replay: reveal one card at a time.
-  useEffect(() => {
-    if (live) return
-    if (visibleCount >= sourceMessages.length) return
-    const t = setTimeout(() => setVisibleCount((c) => c + 1), 820)
-    return () => clearTimeout(t)
-  }, [live, visibleCount, sourceMessages.length])
 
   useEffect(() => {
-    if (feedRef.current && visibleCount > prevCount.current) {
+    if (feedRef.current) {
       feedRef.current.scrollTop = feedRef.current.scrollHeight
     }
-    prevCount.current = visibleCount
-  }, [visibleCount])
+  }, [sourceMessages.length])
 
-  const effectiveVisibleCount = visibleCount
-  const visible = sourceMessages.slice(0, effectiveVisibleCount)
+  const visible = sourceMessages
 
   // Cluster message counts
   const clusterCounts = useMemo(() => {
@@ -425,7 +423,7 @@ export function RightPanel({
             FINAL · CHORUS MERGE
           </div>
           <div style={{ fontFamily: SANS, fontSize: 12, color: 'rgba(255,255,255,0.88)', lineHeight: 1.45 }}>
-            {finalAnswer}
+            <ProgressiveText text={finalAnswer} charsPerSecond={220} />
           </div>
           {citations.length > 0 && (
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -441,6 +439,11 @@ export function RightPanel({
                   {c}
                 </span>
               ))}
+            </div>
+          )}
+          {settlement && (
+            <div style={{ marginTop: 8, fontFamily: MONO, fontSize: 8, color: 'rgba(180,255,210,0.55)', letterSpacing: '0.08em' }}>
+              Settlement preview ready
             </div>
           )}
         </motion.div>
@@ -460,24 +463,24 @@ export function RightPanel({
                 </div>
               )
             }
-            const isNew = idx === filtered.length - 1 && effectiveVisibleCount > 0
+            const isNew = idx === filtered.length - 1 && visible.length > 0
             return <MessageCard key={msg.id} msg={msg} isNew={isNew} />
           })}
         </AnimatePresence>
 
-        {effectiveVisibleCount === 0 && (
+        {visible.length === 0 && (
           <div style={{ padding: '32px 14px', textAlign: 'center' }}>
             <motion.div
               animate={{ opacity: [0.2, 0.5, 0.2] }}
               transition={{ duration: 2, repeat: Infinity }}
               style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(255,255,255,0.30)', letterSpacing: '0.14em' }}
             >
-              {live ? 'AWAITING BACKEND EVENTS…' : 'AWAITING AGENTS…'}
+              {live ? 'AWAITING BACKEND EVENTS…' : 'AWAITING SIMULATION EVENTS…'}
             </motion.div>
           </div>
         )}
 
-        {filter !== 'all' && filtered.length === 0 && effectiveVisibleCount > 0 && (
+        {filter !== 'all' && filtered.length === 0 && visible.length > 0 && (
           <div style={{ padding: '20px 14px', textAlign: 'center' }}>
             <p style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.22)', margin: 0 }}>
               No {filter.toUpperCase()} messages yet

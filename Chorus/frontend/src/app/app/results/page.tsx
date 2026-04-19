@@ -1,5 +1,5 @@
 'use client'
-import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, useInView } from 'framer-motion'
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip } from 'recharts'
@@ -8,10 +8,66 @@ import { BeamsBackground } from '@/components/ui/beams-background'
 import { type Cluster, type AgentMessage } from '@/lib/mock-data'
 import { useSharedJobRuntime } from '@/lib/runtime/job-runtime-provider'
 import { buildClustersFromMessages, buildCostChartData, buildResults } from '@/lib/runtime/adapter'
+import { buildAgentContributions } from '@/lib/runtime/agent-contributions'
+import { AgentContributions } from '@/components/results/agent-contributions'
 import Link from 'next/link'
 
 const SANS = 'var(--font-geist-sans)'
 const MONO = 'var(--font-geist-mono)'
+
+// ─── Module-level Recharts formatters (avoid re-creating per render) ──────────
+
+const costTooltipFormatter = (v: unknown): [string, string] => {
+  const n = typeof v === 'number' ? v : Number(v ?? 0)
+  return [`$${Number.isFinite(n) ? n.toFixed(2) : '0.00'}`, 'Cost']
+}
+
+const xAxisTick = { fill: 'rgba(255,255,255,0.38)', fontSize: 12, fontFamily: SANS }
+
+const tooltipContentStyle = {
+  background: '#0a0a0a',
+  border: '1px solid rgba(255,255,255,0.09)',
+  borderRadius: 2,
+  fontFamily: MONO,
+  fontSize: 11,
+  color: 'rgba(255,255,255,0.65)',
+}
+
+const tooltipCursor = { fill: 'rgba(255,255,255,0.03)' }
+
+// ─── Static confidence gauge tick marks (computed once) ───────────────────────
+
+const GAUGE_TICKS = (() => {
+  const r = 52
+  const out: { x1: string; y1: string; x2: string; y2: string }[] = []
+  for (let i = 0; i < 24; i++) {
+    const angle = (i / 24) * 360 - 90
+    const rad = (angle * Math.PI) / 180
+    out.push({
+      x1: (65 + (r - 8) * Math.cos(rad)).toFixed(2),
+      y1: (65 + (r - 8) * Math.sin(rad)).toFixed(2),
+      x2: (65 + r * Math.cos(rad)).toFixed(2),
+      y2: (65 + r * Math.sin(rad)).toFixed(2),
+    })
+  }
+  return out
+})()
+
+const GAUGE_TICKS_JSX = (
+  <>
+    {GAUGE_TICKS.map((t, i) => (
+      <line
+        key={i}
+        x1={t.x1}
+        y1={t.y1}
+        x2={t.x2}
+        y2={t.y2}
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth={1}
+      />
+    ))}
+  </>
+)
 
 // ─── Count-up hook ────────────────────────────────────────────────────────────
 
@@ -53,20 +109,16 @@ function useCountUp(target: number, duration = 1400, delay = 0) {
 function WordReveal({ text, delay = 0 }: { text: string; delay?: number }) {
   const ref = useRef<HTMLSpanElement>(null)
   const inView = useInView(ref, { once: true, margin: '-40px' })
-  const words = text.split(/\s+/).filter(Boolean)
   return (
     <span ref={ref}>
-      {words.map((w, i) => (
-        <motion.span
-          key={i}
-          initial={{ opacity: 0, y: 8 }}
-          animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ type: 'spring', stiffness: 200, damping: 28, delay: delay + i * 0.035 }}
-          style={{ display: 'inline-block', marginRight: '0.25em' }}
-        >
-          {w}
-        </motion.span>
-      ))}
+      <motion.span
+        initial={{ opacity: 0, y: 8 }}
+        animate={inView ? { opacity: 1, y: 0 } : {}}
+        transition={{ type: 'spring', stiffness: 200, damping: 28, delay }}
+        style={{ display: 'inline-block' }}
+      >
+        {text}
+      </motion.span>
     </span>
   )
 }
@@ -85,18 +137,7 @@ function ConfidenceGauge({ value }: { value: number }) {
         {/* Track */}
         <circle cx={65} cy={65} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} />
         {/* Tick marks */}
-        {Array.from({ length: 24 }).map((_, i) => {
-          const angle = (i / 24) * 360 - 90
-          const rad = (angle * Math.PI) / 180
-          const x1 = 65 + (r - 8) * Math.cos(rad)
-          const y1 = 65 + (r - 8) * Math.sin(rad)
-          const x2 = 65 + r * Math.cos(rad)
-          const y2 = 65 + r * Math.sin(rad)
-          return (
-            <line key={i} x1={x1.toFixed(2)} y1={y1.toFixed(2)} x2={x2.toFixed(2)} y2={y2.toFixed(2)}
-              stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
-          )
-        })}
+        {GAUGE_TICKS_JSX}
         {/* Arc — electric color with glow */}
         <motion.circle
           cx={65} cy={65} r={r}
@@ -130,19 +171,17 @@ function ClusterCard({
   idx,
   delay,
   clusters,
-  messages,
+  topMessages,
 }: {
   idx: number
   delay: number
   clusters: Cluster[]
-  messages: AgentMessage[]
+  topMessages: AgentMessage[]
 }) {
   const cluster = clusters[idx]
   if (!cluster) return null
   const dotOpacity = 0.90 - idx * 0.18
-  const topMsgs = messages
-    .filter(m => m.clusterId === cluster.id && m.type !== 'cluster')
-    .slice(0, 3)
+  const topMsgs = topMessages
 
   return (
     <motion.div
@@ -267,23 +306,42 @@ function RoundTimeline({
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: '-40px' })
 
-  const roundCount = Math.max(
-    1,
-    totalRounds,
-    ...messages.map((m) => m.round),
-  )
-  const rounds = Array.from({ length: roundCount }, (_, index) => {
-    const r = index + 1
-    const rMsgs = messages.filter(m => m.round === r)
-    const types = {
-      propose: rMsgs.filter(m => m.type === 'propose').length,
-      critique: rMsgs.filter(m => m.type === 'critique').length,
-      agree: rMsgs.filter(m => m.type === 'agree').length,
-      cluster: rMsgs.filter(m => m.type === 'cluster').length,
+  const rounds = useMemo(() => {
+    let maxRound = 0
+    for (const m of messages) {
+      if (m.round > maxRound) maxRound = m.round
     }
-    const keyEvent = rMsgs.find(m => m.type === 'cluster')?.text ?? rMsgs[rMsgs.length - 1]?.text
-    return { round: r, count: rMsgs.length, types, keyEvent, startTs: rMsgs[0]?.timestamp, endTs: rMsgs[rMsgs.length - 1]?.timestamp }
-  })
+    const roundCount = Math.max(1, totalRounds, maxRound)
+    // Bucket messages by round in a single pass
+    const byRound: AgentMessage[][] = Array.from({ length: roundCount }, () => [])
+    for (const m of messages) {
+      const idx = m.round - 1
+      if (idx >= 0 && idx < roundCount) byRound[idx].push(m)
+    }
+    return byRound.map((rMsgs, index) => {
+      const r = index + 1
+      const types = { propose: 0, critique: 0, agree: 0, cluster: 0 }
+      let keyEvent: string | undefined
+      for (const m of rMsgs) {
+        if (m.type === 'propose') types.propose++
+        else if (m.type === 'critique') types.critique++
+        else if (m.type === 'agree') types.agree++
+        else if (m.type === 'cluster') {
+          types.cluster++
+          if (keyEvent === undefined) keyEvent = m.text
+        }
+      }
+      if (keyEvent === undefined) keyEvent = rMsgs[rMsgs.length - 1]?.text
+      return {
+        round: r,
+        count: rMsgs.length,
+        types,
+        keyEvent,
+        startTs: rMsgs[0]?.timestamp,
+        endTs: rMsgs[rMsgs.length - 1]?.timestamp,
+      }
+    })
+  }, [messages, totalRounds])
 
   return (
     <div ref={ref} style={{ marginBottom: '5rem' }}>
@@ -374,63 +432,6 @@ function RoundTimeline({
   )
 }
 
-// ─── Top Contributing Agents ──────────────────────────────────────────────────
-
-const CLUSTER_OPACITY: Record<number, number> = { 1: 0.85, 2: 0.65, 3: 0.45, 4: 0.30 }
-
-interface TopAgent { id: string; messageCount: number; clusterId: number }
-
-function TopAgents({ agents }: { agents: TopAgent[] }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const inView = useInView(ref, { once: true, margin: '-40px' })
-  const top = [...agents].sort((a, b) => b.messageCount - a.messageCount).slice(0, 6)
-  const maxMessages = top[0]?.messageCount ?? 1
-  if (top.length === 0) return null
-
-  return (
-    <div ref={ref} style={{ marginBottom: '5rem' }}>
-      <span style={{
-        fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em',
-        color: 'rgba(255,255,255,0.50)', textTransform: 'uppercase',
-        display: 'block', marginBottom: '1.4rem',
-      } as React.CSSProperties}>
-        Top Contributing Agents
-      </span>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem 2.5rem' }}>
-        {top.map((node, i) => {
-          const op = CLUSTER_OPACITY[node.clusterId] ?? 0.5
-          const barW = (node.messageCount / Math.max(1, maxMessages)) * 100
-          const shortId = node.id.length > 10 ? node.id.slice(0, 10) + '…' : node.id
-          return (
-            <motion.div
-              key={node.id}
-              initial={{ opacity: 0, x: -8 }}
-              animate={inView ? { opacity: 1, x: 0 } : {}}
-              transition={{ type: 'spring', stiffness: 220, damping: 28, delay: 0.1 + i * 0.07 }}
-              style={{ display: 'flex', alignItems: 'center', gap: 10 }}
-            >
-              <span style={{ fontFamily: MONO, fontSize: 10, color: `rgba(255,255,255,${op})`, width: 96, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {shortId}
-              </span>
-              <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={inView ? { width: `${barW}%` } : {}}
-                  transition={{ duration: 0.9, ease: 'easeOut', delay: 0.2 + i * 0.07 }}
-                  style={{ height: '100%', background: `rgba(255,255,255,${op})`, borderRadius: 2 }}
-                />
-              </div>
-              <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.28)', width: 24, textAlign: 'right', flexShrink: 0 }}>
-                {node.messageCount}
-              </span>
-            </motion.div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 function ResultsPageContent() {
@@ -438,7 +439,7 @@ function ResultsPageContent() {
   const runtime = useSharedJobRuntime()
   const hasSession = Boolean(runtime.session)
   const hasMessages = runtime.messages.length > 0
-  const messages = useDeferredValue(runtime.messages)
+  const messages = runtime.messages
   const r = useMemo(
     () => buildResults(runtime.session, messages, runtime.settlement, runtime.finalAnswer),
     [runtime.session, messages, runtime.settlement, runtime.finalAnswer],
@@ -451,15 +452,41 @@ function ResultsPageContent() {
   const costRef = useRef<HTMLDivElement>(null)
   const costInView = useInView(costRef, { once: true })
 
-  const topAgents = useMemo(() => {
-    const by = new Map<string, { id: string; messageCount: number; clusterId: number }>()
-    for (const m of messages) {
-      const id = m.slotId.split('#')[0]
-      const existing = by.get(id)
-      if (existing) existing.messageCount++
-      else by.set(id, { id, messageCount: 1, clusterId: m.clusterId })
+  const contributions = useMemo(
+    () => buildAgentContributions(messages, runtime.settlement),
+    [messages, runtime.settlement],
+  )
+
+  const { verdictHeadline, verdictBody } = useMemo(() => {
+    const full = (r.finalPrediction ?? '').trim()
+    if (!full) return { verdictHeadline: '', verdictBody: '' }
+    const [firstPara, ...restParas] = full.split(/\n\n+/)
+    const match = firstPara.match(/^([\s\S]*?[.!?])(\s+)([\s\S]*)$/)
+    if (match && match[1].length <= 220 && match[3].trim().length > 0) {
+      const headline = match[1].trim()
+      const rest = [match[3].trim(), ...restParas].join('\n\n').trim()
+      return { verdictHeadline: headline, verdictBody: rest }
     }
-    return Array.from(by.values())
+    if (firstPara.length > 260 && restParas.length > 0) {
+      const cut = firstPara.slice(0, 240).replace(/\s+\S*$/, '') + '…'
+      return { verdictHeadline: cut, verdictBody: [firstPara, ...restParas].join('\n\n') }
+    }
+    return { verdictHeadline: firstPara, verdictBody: restParas.join('\n\n') }
+  }, [r.finalPrediction])
+
+  // Pre-bucket messages per cluster once, each bucket sliced to 3.
+  const clusterTopMessages = useMemo(() => {
+    const byCluster = new Map<number, AgentMessage[]>()
+    for (const m of messages) {
+      if (m.type === 'cluster') continue
+      const bucket = byCluster.get(m.clusterId)
+      if (bucket) {
+        if (bucket.length < 3) bucket.push(m)
+      } else {
+        byCluster.set(m.clusterId, [m])
+      }
+    }
+    return byCluster
   }, [messages])
 
   if (!hasSession || !hasMessages) {
@@ -560,10 +587,25 @@ function ResultsPageContent() {
                 fontSize: 'clamp(1.5rem, 2.8vw, 2.25rem)',
                 letterSpacing: '-0.03em', lineHeight: 1.15,
                 color: 'rgba(255,255,255,0.88)',
-                marginBottom: '2rem', maxWidth: '52ch',
+                marginBottom: '1.5rem', maxWidth: '52ch',
               }}>
-                <WordReveal text={r.finalPrediction} delay={0.15} />
+                <WordReveal text={verdictHeadline} delay={0.15} />
               </h1>
+
+              {verdictBody && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.35 }}
+                  style={{
+                    fontFamily: SANS, fontSize: 'clamp(0.95rem, 1.15vw, 1.05rem)',
+                    lineHeight: 1.65, color: 'rgba(255,255,255,0.62)',
+                    marginBottom: '2rem', maxWidth: '68ch', whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {verdictBody}
+                </motion.div>
+              )}
 
               {/* Stat row */}
               <div style={{ display: 'flex', gap: '2.5rem', flexWrap: 'wrap' }}>
@@ -594,20 +636,22 @@ function ResultsPageContent() {
 
             {/* Asymmetric grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem' }}>
-              <ClusterCard idx={0} delay={0.35} clusters={clusters} messages={messages} />
-              <ClusterCard idx={1} delay={0.45} clusters={clusters} messages={messages} />
-              <ClusterCard idx={2} delay={0.55} clusters={clusters} messages={messages} />
+              <ClusterCard idx={0} delay={0.35} clusters={clusters} topMessages={clusterTopMessages.get(clusters[0]?.id) ?? []} />
+              <ClusterCard idx={1} delay={0.45} clusters={clusters} topMessages={clusterTopMessages.get(clusters[1]?.id) ?? []} />
+              <ClusterCard idx={2} delay={0.55} clusters={clusters} topMessages={clusterTopMessages.get(clusters[2]?.id) ?? []} />
             </div>
             <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-              <ClusterCard idx={3} delay={0.65} clusters={clusters} messages={messages} />
+              <ClusterCard idx={3} delay={0.65} clusters={clusters} topMessages={clusterTopMessages.get(clusters[3]?.id) ?? []} />
             </div>
           </motion.div>
 
           {/* ── Section 2b: Round Timeline ── */}
           <RoundTimeline messages={messages} totalRounds={runtime.totalRounds} />
 
-          {/* ── Section 2c: Top Agents ── */}
-          <TopAgents agents={topAgents} />
+          {/* ── Section 2c: Agent Contributions ── */}
+          <div style={{ marginBottom: '5rem' }}>
+            <AgentContributions contributions={contributions} />
+          </div>
 
           {/* ── Section 3: Cost ── */}
           <div
@@ -690,21 +734,15 @@ function ResultsPageContent() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={costChartData} barSize={60}>
                     <XAxis dataKey="label"
-                      tick={{ fill: 'rgba(255,255,255,0.38)', fontSize: 12, fontFamily: SANS }}
+                      tick={xAxisTick}
                       axisLine={false} tickLine={false} />
                     <YAxis hide />
                     <Tooltip
-                      contentStyle={{
-                        background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.09)',
-                        borderRadius: 2, fontFamily: MONO, fontSize: 11, color: 'rgba(255,255,255,0.65)',
-                      }}
-                      cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                      formatter={(v) => {
-                        const n = typeof v === 'number' ? v : Number(v ?? 0)
-                        return [`$${Number.isFinite(n) ? n.toFixed(2) : '0.00'}`, 'Cost']
-                      }}
+                      contentStyle={tooltipContentStyle}
+                      cursor={tooltipCursor}
+                      formatter={costTooltipFormatter}
                     />
-                    <Bar dataKey="cost" radius={[2, 2, 0, 0]}>
+                    <Bar dataKey="cost" radius={[2, 2, 0, 0]} animationDuration={600}>
                       {costChartData.map(entry => (
                         <Cell
                           key={entry.label}

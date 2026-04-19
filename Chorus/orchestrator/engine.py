@@ -14,7 +14,7 @@ import anyio
 import httpx
 
 from orchestrator.broadcast_completions import normalize_completion_url
-from orchestrator.demo_agent import is_demo_completion_base
+from orchestrator.demo_agent import build_demo_final_answer, is_demo_completion_base
 from orchestrator.embeddings import EmbeddingService
 from orchestrator.invoker import AgentInvoker, OLLAMA_MODEL
 from orchestrator.metrics import METRICS
@@ -26,10 +26,11 @@ from orchestrator.watchdog import Watchdog
 
 MERGE_SYSTEM_PROMPT = (
     "You are the Chorus moderator. Given peer answers from N agents, produce ONE final "
-    "answer of at most 120 words that synthesizes the strongest points. Cite the slots "
-    "you used with square-bracket tags like [slot-0]. Be direct, skip preamble."
+    "answer of at most 120 words that synthesizes the strongest points. Cite the exact "
+    "slot ids you used with square-bracket tags like [atlas-skeptic] or [slot-0]. Be "
+    "direct and skip preamble."
 )
-_CITATION_RE = re.compile(r"\[(slot-[A-Za-z0-9_\-]+)\]")
+_CITATION_RE = re.compile(r"\[([A-Za-z0-9_\-#]+)\]")
 
 
 class RoundEngine:
@@ -77,6 +78,9 @@ class RoundEngine:
                         METRICS.inc("rounds_slots_pruned")
                 job.rounds_data.append(round_audit)
                 await self.store.update_job(job)
+                round_pause_s = self._demo_round_pause_s(job)
+                if round_pause_s > 0 and round_index < job.spec.rounds:
+                    await anyio.sleep(round_pause_s)
 
             await self._merge_answer(job)
 
@@ -314,11 +318,14 @@ class RoundEngine:
                 final_text = None
 
         if not final_text:
-            best = max(valid_slots, key=lambda a: a.impact_c)
-            final_text = (best.completion or "").strip()
+            if self._has_demo_slots(job):
+                final_text = build_demo_final_answer(job=job, valid_slots=valid_slots)
+            else:
+                best = max(valid_slots, key=lambda a: a.impact_c)
+                final_text = (best.completion or "").strip()
 
         final_text = (final_text or "").strip()
-        cited = [slot_id for slot_id in _CITATION_RE.findall(final_text)]
+        cited = [slot_id for slot_id in _CITATION_RE.findall(final_text) if slot_id in job.slots]
         if not cited:
             cited = [a.slot_id for a in valid_slots[:3]]
 
@@ -395,3 +402,19 @@ class RoundEngine:
                 furthest_edges.append((target, furthest_id))
                 job.slots[furthest_id].f_impact += 1.0
         return nearest_edges, furthest_edges
+
+    @staticmethod
+    def _has_demo_slots(job: JobRecord) -> bool:
+        return any(
+            is_demo_completion_base(str(slot.registration.completion_base_url))
+            for slot in job.slots.values()
+        )
+
+    def _demo_round_pause_s(self, job: JobRecord) -> float:
+        if not self._has_demo_slots(job):
+            return 0.0
+        raw = os.getenv("ORC_DEMO_ROUND_PAUSE_S", "1.35").strip()
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            return 1.35

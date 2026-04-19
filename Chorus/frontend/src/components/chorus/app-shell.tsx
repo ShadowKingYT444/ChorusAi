@@ -6,7 +6,12 @@ import { ChorusSidebar } from './sidebar'
 import { ChorusTopBar } from './top-bar'
 import { ChorusComposer } from './composer'
 import { ChorusWelcome } from './welcome'
-import { ChorusChatStream, type AgentResponse, type ChatTurn } from './chat-stream'
+import {
+  ChorusChatStream,
+  type AgentResponse,
+  type ChatTurn,
+  type ChorusRoundState,
+} from './chat-stream'
 import { useNetworkStatus } from '@/hooks/use-network-status'
 import {
   createJob,
@@ -16,7 +21,7 @@ import {
 } from '@/lib/api/orchestrator'
 import { writeSimulationSession } from '@/lib/runtime/session'
 import { getChat, upsertChat } from '@/lib/runtime/chat-history'
-import { useJobWebSocket } from '@/lib/runtime/use-job-websocket'
+import { useJobWebSocket, type JobLine } from '@/lib/runtime/use-job-websocket'
 
 const ACTIVE_CHAT_KEY = 'chorus_active_chat_id'
 
@@ -28,6 +33,99 @@ type LaunchParticipant = {
 }
 
 const SYNTHETIC_LOCAL_PEER_ID = 'local-ollama'
+
+function sameResponses(left: AgentResponse[], right: AgentResponse[]) {
+  return (
+    left.length === right.length &&
+    left.every((response, index) => {
+      const other = right[index]
+      return (
+        other &&
+        other.peerId === response.peerId &&
+        other.model === response.model &&
+        other.text === response.text &&
+        other.status === response.status &&
+        other.latencyMs === response.latencyMs
+      )
+    })
+  )
+}
+
+function sameRoundStates(left: ChorusRoundState[] | undefined, right: ChorusRoundState[]) {
+  const previous = left ?? []
+  return (
+    previous.length === right.length &&
+    previous.every((roundState, index) => {
+      const other = right[index]
+      return other && other.round === roundState.round && sameResponses(roundState.responses, other.responses)
+    })
+  )
+}
+
+function buildRoundStates(
+  turn: ChatTurn,
+  lines: JobLine[],
+  currentRound: number,
+): ChorusRoundState[] {
+  const grouped = new Map<number, AgentResponse[]>()
+  const seedRounds =
+    turn.roundStates?.length
+      ? turn.roundStates
+      : [
+          {
+            round: Math.max(1, turn.currentRound ?? 1),
+            responses: turn.responses ?? [],
+          },
+        ]
+
+  for (const roundState of seedRounds) {
+    grouped.set(
+      roundState.round,
+      (roundState.responses ?? []).map((response) => ({ ...response })),
+    )
+  }
+
+  const modelByPeer = new Map<string, string>()
+  for (const roundState of seedRounds) {
+    for (const response of roundState.responses ?? []) {
+      modelByPeer.set(response.peerId, response.model)
+    }
+  }
+
+  for (const line of lines) {
+    const round = Math.max(1, line.round || 1)
+    const peerId = line.slotId
+    const responses = grouped.get(round)?.map((response) => ({ ...response })) ?? []
+    const existingIndex = responses.findIndex((response) => response.peerId === peerId)
+    const nextResponse: AgentResponse = {
+      peerId,
+      model: modelByPeer.get(peerId) ?? 'unknown',
+      text: line.snippet,
+      latencyMs: line.latencyMs,
+      status: line.status === 'pruned' ? 'error' : 'done',
+    }
+
+    modelByPeer.set(peerId, nextResponse.model)
+
+    if (existingIndex === -1) {
+      responses.push(nextResponse)
+    } else {
+      responses[existingIndex] = nextResponse
+    }
+
+    grouped.set(
+      round,
+      responses.sort((left, right) => left.peerId.localeCompare(right.peerId)),
+    )
+  }
+
+  const startedRounds = Math.max(1, currentRound, ...Array.from(grouped.keys()))
+
+  return Array.from({ length: startedRounds }, (_, index) => ({
+    round: index + 1,
+    responses: grouped.get(index + 1) ?? [],
+  }))
+}
 
 function buildLaunchParticipants(
   peers: PeerEntry[],
@@ -176,56 +274,24 @@ export function ChorusAppShell() {
     setTurns((prev) =>
       prev.map((turn) => {
         if (turn.id !== turnId) return turn
-        const baseResponses = turn.responses ?? []
-        const responses: AgentResponse[] = baseResponses.map((r) => ({ ...r }))
-        const indexByPeer = new Map(responses.map((r, i) => [r.peerId, i]))
-        for (const line of jobWs.lines) {
-          const peerId = line.slotId.split('#')[0] ?? line.slotId
-          const idx = indexByPeer.get(peerId)
-          const status: AgentResponse['status'] =
-            line.status === 'pruned' ? 'error' : 'done'
-          if (idx == null) {
-            indexByPeer.set(peerId, responses.length)
-            responses.push({
-              peerId,
-              model: 'unknown',
-              text: line.snippet,
-              latencyMs: line.latencyMs,
-              status,
-            })
-          } else {
-            responses[idx] = {
-              ...responses[idx],
-              text: line.snippet,
-              latencyMs: line.latencyMs,
-              status,
-            }
-          }
-        }
         const consensus = jobWs.finalAnswer ?? turn.consensus
         const currentRound = Math.max(1, jobWs.currentRound || turn.currentRound || 1)
         const totalRounds = Math.max(currentRound, turn.totalRounds ?? rounds)
-        const sameResponses =
-          responses.length === baseResponses.length &&
-          responses.every((r, i) => {
-            const old = baseResponses[i]
-            return (
-              old &&
-              old.peerId === r.peerId &&
-              old.text === r.text &&
-              old.status === r.status &&
-              old.latencyMs === r.latencyMs
-            )
-          })
+        const roundStates = buildRoundStates(turn, jobWs.lines, currentRound)
+        const responses =
+          roundStates.find((roundState) => roundState.round === currentRound)?.responses ??
+          roundStates.at(-1)?.responses ??
+          []
         if (
-          sameResponses &&
+          sameResponses(turn.responses ?? [], responses) &&
+          sameRoundStates(turn.roundStates, roundStates) &&
           consensus === turn.consensus &&
           currentRound === (turn.currentRound ?? 1) &&
           totalRounds === (turn.totalRounds ?? rounds)
         ) {
           return turn
         }
-        return { ...turn, responses, consensus, currentRound, totalRounds }
+        return { ...turn, responses, roundStates, consensus, currentRound, totalRounds }
       }),
     )
   }, [jobWs.currentRound, jobWs.finalAnswer, jobWs.lines, rounds])
@@ -301,6 +367,7 @@ export function ChorusAppShell() {
           role: 'chorus',
           voicesRequested: launchPlan.participants.length,
           responses: initialResponses,
+          roundStates: [{ round: 1, responses: initialResponses }],
           currentRound: 1,
           totalRounds: rounds,
           createdAt: now + 1,
@@ -314,7 +381,7 @@ export function ChorusAppShell() {
     } finally {
       setSending(false)
     }
-  }, [clampedVoices, draft, rounds, router, sending, status.peers])
+  }, [clampedVoices, draft, rounds, sending, status.peers])
 
   const hasTurns = turns.length > 0
   const openNetwork = useCallback(() => router.push('/app'), [router])
