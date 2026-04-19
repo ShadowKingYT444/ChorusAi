@@ -36,3 +36,5 @@ pnpm-debug.log*
 *.pem
 .idea/
 .vscode/
+
+.vercel

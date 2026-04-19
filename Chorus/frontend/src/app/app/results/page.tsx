@@ -1,5 +1,5 @@
 'use client'
-import { Suspense, useEffect, useState, useRef } from 'react'
+import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, useInView } from 'framer-motion'
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip } from 'recharts'
@@ -7,7 +7,7 @@ import { TopBar } from '@/components/top-bar'
 import { BeamsBackground } from '@/components/ui/beams-background'
 import { type Cluster, type AgentMessage } from '@/lib/mock-data'
 import { useSharedJobRuntime } from '@/lib/runtime/job-runtime-provider'
-import { buildCostChartData } from '@/lib/runtime/adapter'
+import { buildClustersFromMessages, buildCostChartData, buildResults } from '@/lib/runtime/adapter'
 import Link from 'next/link'
 
 const SANS = 'var(--font-geist-sans)'
@@ -426,14 +426,20 @@ function ResultsPageContent() {
   const runtime = useSharedJobRuntime()
   const hasSession = Boolean(runtime.session)
   const hasMessages = runtime.messages.length > 0
-  const r = runtime.results
-  const clusters = runtime.clusters
-  const messages = runtime.messages
-  const costChartData = buildCostChartData(r)
+  const messages = useDeferredValue(runtime.messages)
+  const r = useMemo(
+    () => buildResults(runtime.session, messages, runtime.settlement),
+    [runtime.session, messages, runtime.settlement],
+  )
+  const clusters = useMemo(
+    () => buildClustersFromMessages(messages, runtime.session?.agentCount ?? 0),
+    [messages, runtime.session?.agentCount],
+  )
+  const costChartData = useMemo(() => buildCostChartData(r), [r])
   const costRef = useRef<HTMLDivElement>(null)
   const costInView = useInView(costRef, { once: true })
 
-  const topAgents = (() => {
+  const topAgents = useMemo(() => {
     const by = new Map<string, { id: string; messageCount: number; clusterId: number }>()
     for (const m of messages) {
       const id = m.slotId.split('#')[0]
@@ -442,7 +448,7 @@ function ResultsPageContent() {
       else by.set(id, { id, messageCount: 1, clusterId: m.clusterId })
     }
     return Array.from(by.values())
-  })()
+  }, [messages])
 
   if (!hasSession || !hasMessages) {
     return (

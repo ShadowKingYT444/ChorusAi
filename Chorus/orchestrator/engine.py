@@ -6,6 +6,7 @@ import os
 import re
 import time
 from collections import Counter
+from typing import cast
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ from orchestrator.embeddings import EmbeddingService
 from orchestrator.invoker import AgentInvoker, OLLAMA_MODEL
 from orchestrator.metrics import METRICS
 from orchestrator.identity import get_orchestrator_keypair
-from orchestrator.models import JobRecord, JobStatus, PruneStatus, RoundAudit, SlotRoundAudit
+from orchestrator.models import CompletionResult, JobRecord, JobStatus, PruneStatus, RoundAudit, SlotRoundAudit
 from orchestrator.payout import attach_receipt, compute_settlement
 from orchestrator.store import JobStore
 from orchestrator.watchdog import Watchdog
@@ -129,22 +130,25 @@ class RoundEngine:
             for slot_id in active_slots
         }
 
-        call_tasks = []
         slot_ids = list(active_slots.keys())
-        for slot_id in slot_ids:
+        responses: list[CompletionResult | None] = [None] * len(slot_ids)
+
+        async def invoke_slot(index: int, slot_id: str) -> None:
             slot = active_slots[slot_id]
-            call_tasks.append(
-                self.invoker.invoke(
-                    job=job,
-                    slot_id=slot_id,
-                    registration=slot.registration,
-                    round_index=round_index,
-                    persona=personas[slot_id],
-                    context_text=contexts[slot_id],
-                )
+            responses[index] = await self.invoker.invoke(
+                job=job,
+                slot_id=slot_id,
+                registration=slot.registration,
+                round_index=round_index,
+                persona=personas[slot_id],
+                context_text=contexts[slot_id],
             )
 
-        responses = await asyncio.gather(*call_tasks)
+        async with anyio.create_task_group() as task_group:
+            for index, slot_id in enumerate(slot_ids):
+                task_group.start_soon(invoke_slot, index, slot_id)
+
+        responses = [cast(CompletionResult, response) for response in responses]
         texts = [resp.text.strip() for resp in responses if resp.text]
         dup_counts = Counter(texts)
 

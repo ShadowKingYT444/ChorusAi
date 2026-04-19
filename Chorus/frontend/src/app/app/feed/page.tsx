@@ -263,7 +263,7 @@ function FeedPageContent() {
                     <span style={{ color: 'var(--color-electric)' }}>{osName}</span>
                   </div>
                   <div>
-                    <span className="text-white/40">Peers online: </span>
+                    <span className="text-white/40">Workers online: </span>
                     <span className="text-white/85">{connectedPeers.length}</span>
                   </div>
                   {connectedPeers.length > 0 ? (
@@ -296,7 +296,7 @@ function FeedPageContent() {
                     </ul>
                   ) : (
                     <span className="text-white/35">
-                      Waiting for peers…
+                      Waiting for workers…
                     </span>
                   )}
                 </div>

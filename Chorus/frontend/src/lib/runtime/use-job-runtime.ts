@@ -41,19 +41,14 @@ const EMPTY_RESULTS: SimulationResults = {
 }
 const EMPTY_EDGES: RuntimeEdge[] = []
 
-function mergeLaunchedPeers(livePeers: PeerEntry[], launchedPeers: PeerEntry[] | undefined): PeerEntry[] {
-  if (!launchedPeers || launchedPeers.length === 0) {
-    return [...livePeers].sort((a, b) => a.peer_id.localeCompare(b.peer_id))
-  }
-
-  const liveById = new Map(livePeers.map((peer) => [peer.peer_id, peer]))
-  const merged: PeerEntry[] = launchedPeers.map((peer) => liveById.get(peer.peer_id) ?? peer)
+function normalizeConnectedPeers(livePeers: PeerEntry[], localPeerId: string): PeerEntry[] {
+  const peersById = new Map<string, PeerEntry>()
   for (const peer of livePeers) {
-    if (!merged.some((item) => item.peer_id === peer.peer_id)) {
-      merged.push(peer)
-    }
+    if (peer.peer_id === localPeerId) continue
+    if (peer.model === 'web-prompter') continue
+    peersById.set(peer.peer_id, peer)
   }
-  return merged
+  return [...peersById.values()].sort((a, b) => a.peer_id.localeCompare(b.peer_id))
 }
 
 function statusToType(status: JobLine['status']): RuntimeMessage['type'] {
@@ -150,29 +145,30 @@ export function useJobRuntime(jobIdFromRoute?: string | null): JobRuntimeState {
       try {
         const snapshot = await getPeers()
         if (cancelled) return
-        const mergedPeers = mergeLaunchedPeers(snapshot.peers, effectiveSession.launchedPeers)
-        setConnectedPeers(mergedPeers)
-        setAgentCompletionOrigins(mergedPeers.map((p) => p.peer_id))
+        const localPeerId = getOrCreatePeerId()
+        const livePeers = normalizeConnectedPeers(snapshot.peers, localPeerId)
+        setConnectedPeers(livePeers)
+        setAgentCompletionOrigins(livePeers.map((p) => p.peer_id))
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load peers')
-          const fallbackPeers = mergeLaunchedPeers([], effectiveSession.launchedPeers)
-          setConnectedPeers(fallbackPeers)
-          setAgentCompletionOrigins(fallbackPeers.map((p) => p.peer_id))
+          setConnectedPeers([])
+          setAgentCompletionOrigins([])
         }
       } finally {
         if (!cancelled) setLoading(false)
       }
     })()
 
+    const localPeerId = getOrCreatePeerId()
     const savedIp = getSavedOllamaIp()
     const ws = openSignalingSocket(
-      getOrCreatePeerId(),
+      localPeerId,
       'web-prompter',
       {
         onEvent: (event) => {
           if (event.type === 'peer_count') {
-            const peers = mergeLaunchedPeers(event.peers, effectiveSession.launchedPeers)
+            const peers = normalizeConnectedPeers(event.peers, localPeerId)
             setConnectedPeers(peers)
             setAgentCompletionOrigins(peers.map((p) => p.peer_id))
           }

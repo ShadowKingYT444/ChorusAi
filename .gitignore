@@ -27,3 +27,4 @@ Thumbs.db
 bin/
 .claude/
 Chorus/output/
+orchestrator_ed25519.key
