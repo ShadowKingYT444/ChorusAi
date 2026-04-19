@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, Geist_Mono } from "next/font/google";
 import { PageTransition } from "@/components/ui/page-transition";
+import { SetupGate } from "@/components/setup-gate";
 import "./globals.css";
 
 const inter = Inter({
@@ -36,7 +37,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-screen relative overflow-hidden bg-black text-foreground">
-        <PageTransition>{children}</PageTransition>
+        <SetupGate>
+          <PageTransition>{children}</PageTransition>
+        </SetupGate>
       </body>
     </html>
   );
