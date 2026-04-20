@@ -123,6 +123,7 @@ export interface PeerEntry {
   peer_id: string
   address?: string | null
   model: string
+  supported_models?: string[]
   joined_at: number
   status: PeerStatus
   pubkey?: string | null
@@ -169,8 +170,8 @@ export interface CreateJobRequest {
   rounds: number
   payout: number
   embedding_model_version?: string | null
-  review_mode?: string | null
-  template_id?: string | null
+  completion_model?: string | null
+  attachment_ids?: string[] | null
 }
 
 export interface CreateJobResponse {
@@ -195,6 +196,35 @@ export interface RegisterAgentsRequest {
 export interface RegisterAgentsResponse {
   ok: boolean
   registered_slots: string[]
+}
+
+export interface AvailableModelEntry {
+  model_id: string
+  source: 'peer' | 'anchor'
+  route_count: number
+  peer_ids: string[]
+}
+
+export interface AvailableModelsResponse {
+  models: AvailableModelEntry[]
+}
+
+export interface AttachmentRecord {
+  attachment_id: string
+  workspace_id: string
+  filename: string
+  media_type: string
+  kind: string
+  size_bytes: number
+  storage_path: string
+  preview_text: string
+  extracted_text: string
+  metadata: Record<string, unknown>
+  created_at: number
+}
+
+export interface AttachmentUploadResponse {
+  attachments: AttachmentRecord[]
 }
 
 export interface BroadcastPlanRequest {
@@ -380,8 +410,40 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
+async function requestFormData<T>(path: string, formData: FormData): Promise<T> {
+  const baseUrl = ensureBaseUrl()
+  const controller = new AbortController()
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException('Request timed out', 'TimeoutError')),
+    DEFAULT_TIMEOUT_MS,
+  )
+  const { workspaceId, workspaceToken } = getWorkspaceCredentials()
+  try {
+    const headers: Record<string, string> = {}
+    if (workspaceId) headers['X-Chorus-Workspace'] = workspaceId
+    if (workspaceToken) headers.Authorization = `Bearer ${workspaceToken}`
+    const res = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers,
+      body: formData,
+    })
+    if (!res.ok) {
+      const detail = await res.text()
+      throw new Error(`${res.status} ${res.statusText}: ${detail}`)
+    }
+    return (await res.json()) as T
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export function isOrchestratorConfigured(): boolean {
   return Boolean(getEffectiveOrchestratorBase())
+}
+
+export async function getAvailableModels(): Promise<AvailableModelsResponse> {
+  return requestJson<AvailableModelsResponse>('/models')
 }
 
 export function getSignalingWsUrl(): string {
@@ -503,6 +565,14 @@ export async function createJob(req: CreateJobRequest): Promise<CreateJobRespons
     method: 'POST',
     body: JSON.stringify(req),
   })
+}
+
+export async function uploadAttachments(files: File[]): Promise<AttachmentUploadResponse> {
+  const formData = new FormData()
+  for (const file of files) {
+    formData.append('files', file, file.name)
+  }
+  return requestFormData<AttachmentUploadResponse>('/attachments', formData)
 }
 
 export async function registerJobAgents(

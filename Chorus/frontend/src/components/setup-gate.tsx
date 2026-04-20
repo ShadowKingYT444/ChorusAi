@@ -1,8 +1,9 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { isSavedModelVerified } from '@/lib/api/orchestrator'
+import { useEffect } from 'react'
+import { isOrchestratorConfigured, isSavedModelVerified } from '@/lib/api/orchestrator'
+import { readWorkspaceId, readWorkspaceToken } from '@/lib/workspace-config'
 
 const PUBLIC_PATHS = new Set(['/setup', '/join'])
 
@@ -15,30 +16,27 @@ function isPublicPath(pathname: string | null): boolean {
   return false
 }
 
+function hasCompletedSetup(): boolean {
+  return (
+    isSavedModelVerified() &&
+    isOrchestratorConfigured() &&
+    readWorkspaceId().trim().length > 0 &&
+    readWorkspaceToken().trim().length > 0
+  )
+}
+
 export function SetupGate({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const publicPath = isPublicPath(pathname)
-  const [decision, setDecision] = useState<'pending' | 'allow' | 'deny'>(
-    publicPath ? 'allow' : 'pending',
-  )
+  const allowed = publicPath || hasCompletedSetup()
 
   useEffect(() => {
-    if (publicPath) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDecision('allow')
-      return
-    }
-    if (isSavedModelVerified()) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDecision('allow')
-    } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDecision('deny')
+    if (!publicPath && !allowed) {
       router.replace('/setup')
     }
-  }, [publicPath, router])
+  }, [allowed, publicPath, router])
 
-  if (decision !== 'allow') return null
+  if (!allowed) return null
   return <>{children}</>
 }

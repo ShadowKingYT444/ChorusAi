@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useRef } from 'react'
-import { Cpu, User2 } from 'lucide-react'
+import { Cpu, Paperclip, User2 } from 'lucide-react'
+import type { AttachmentRecord } from '@/lib/api/orchestrator'
 
 export interface AgentResponse {
   peerId: string
@@ -21,6 +22,7 @@ export interface ChatTurn {
   id: string
   role: 'user' | 'chorus'
   text?: string
+  attachments?: AttachmentRecord[]
   voicesRequested?: number
   responses?: AgentResponse[]
   roundStates?: ChorusRoundState[]
@@ -80,7 +82,7 @@ export function ChorusChatStream({ turns }: { turns: ChatTurn[] }) {
         {turns.map((turn) => (
           <div key={turn.id} className="flex flex-col gap-2.5">
             {turn.role === 'user' ? (
-              <UserTurn text={turn.text ?? ''} />
+              <UserTurn text={turn.text ?? ''} attachments={turn.attachments ?? []} />
             ) : (
               <ChorusTurn turn={turn} />
             )}
@@ -92,7 +94,13 @@ export function ChorusChatStream({ turns }: { turns: ChatTurn[] }) {
   )
 }
 
-function UserTurn({ text }: { text: string }) {
+function UserTurn({
+  text,
+  attachments,
+}: {
+  text: string
+  attachments: AttachmentRecord[]
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -121,6 +129,26 @@ function UserTurn({ text }: { text: string }) {
           <p className="font-sans text-[14px] text-white/95 leading-relaxed whitespace-pre-wrap">
             {text}
           </p>
+          {attachments.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {attachments.map((attachment) => (
+                <div
+                  key={attachment.attachment_id}
+                  className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5"
+                >
+                  <Paperclip className="h-3.5 w-3.5 text-white/55" />
+                  <div className="min-w-0">
+                    <div className="max-w-[240px] truncate font-mono text-[10px] text-white/82">
+                      {attachment.filename}
+                    </div>
+                    <div className="font-mono text-[9px] text-white/35">
+                      {formatBytes(attachment.size_bytes)} · {attachment.kind}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -320,4 +348,10 @@ function VoiceCard({ response, index }: { response: AgentResponse; index: number
       </p>
     </motion.div>
   )
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }

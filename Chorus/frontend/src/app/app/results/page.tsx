@@ -11,7 +11,6 @@ import { buildClustersFromMessages, buildCostChartData, buildResults } from '@/l
 import { buildAgentContributions } from '@/lib/runtime/agent-contributions'
 import { AgentContributions } from '@/components/results/agent-contributions'
 import Link from 'next/link'
-import { getReviewMode, getReviewTemplate } from '@/lib/review-config'
 
 const SANS = 'var(--font-geist-sans)'
 const MONO = 'var(--font-geist-mono)'
@@ -457,8 +456,6 @@ function ResultsPageContent() {
     () => buildAgentContributions(messages, runtime.settlement),
     [messages, runtime.settlement],
   )
-  const reviewMode = runtime.session?.reviewMode ? getReviewMode(runtime.session.reviewMode) : null
-  const reviewTemplate = runtime.session?.reviewTemplate ? getReviewTemplate(runtime.session.reviewTemplate) : null
   const creditsUsed = r.agentCount * r.rounds
 
   const { verdictHeadline, verdictBody } = useMemo(() => {
@@ -582,7 +579,7 @@ function ResultsPageContent() {
                   display: 'block', marginBottom: '1.4rem',
                 } as React.CSSProperties}
               >
-                Report ready · {reviewTemplate?.label ?? 'Custom review'} · {reviewMode?.label ?? `${r.rounds}-pass`} · {r.totalMessages.toLocaleString()} events
+                Report ready · {r.agentCount} voices · {r.rounds} rounds · {r.totalMessages.toLocaleString()} events
               </motion.span>
 
               <h1 style={{

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import aiosqlite
 
 if TYPE_CHECKING:
-    from orchestrator.models import JobRecord, PeerEntry
+    from orchestrator.models import AttachmentRecord, JobRecord, PeerEntry
 
 logger = logging.getLogger("orchestrator.db")
 
@@ -65,12 +65,27 @@ class ChorusDB:
             CREATE TABLE IF NOT EXISTS peers (
                 peer_id TEXT PRIMARY KEY,
                 model TEXT,
+                supported_models_json TEXT,
                 address TEXT,
                 status TEXT,
                 protocol_version TEXT,
                 joined_at REAL,
                 last_seen REAL,
-                pubkey TEXT
+                pubkey TEXT,
+                verified INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS attachments (
+                attachment_id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                media_type TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                storage_path TEXT NOT NULL,
+                preview_text TEXT NOT NULL,
+                extracted_text TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                created_at REAL NOT NULL
             );
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,6 +113,8 @@ class ChorusDB:
         await self._ensure_job_column("workspace_id", "TEXT")
         await self._ensure_job_column("shadow_credit_cost", "INTEGER NOT NULL DEFAULT 0")
         await self._ensure_job_column("routing_mode", "TEXT")
+        await self._ensure_peer_column("supported_models_json", "TEXT")
+        await self._ensure_peer_column("verified", "INTEGER NOT NULL DEFAULT 0")
         await self._conn.commit()
 
     async def _ensure_job_column(self, column_name: str, ddl: str) -> None:
@@ -108,6 +125,15 @@ class ChorusDB:
         if column_name in existing:
             return
         await self._conn.execute(f"ALTER TABLE jobs ADD COLUMN {column_name} {ddl}")
+
+    async def _ensure_peer_column(self, column_name: str, ddl: str) -> None:
+        assert self._conn is not None
+        async with self._conn.execute("PRAGMA table_info(peers)") as cur:
+            rows = await cur.fetchall()
+        existing = {str(row[1]) for row in rows}
+        if column_name in existing:
+            return
+        await self._conn.execute(f"ALTER TABLE peers ADD COLUMN {column_name} {ddl}")
 
     async def mirror_job(self, record: "JobRecord") -> None:
         if self._conn is None or self._lock is None:
@@ -179,22 +205,26 @@ class ChorusDB:
             if hasattr(status, "value"):
                 status = status.value
             pubkey = data.get("pubkey")
+            supported_models = data.get("supported_models") or []
+            verified = 1 if data.get("verified") else 0
             async with self._lock:
                 await self._conn.execute(
                     """
                     INSERT OR REPLACE INTO peers
-                      (peer_id, model, address, status, protocol_version, joined_at, last_seen, pubkey)
-                    VALUES (?,?,?,?,?,?,?,?)
+                      (peer_id, model, supported_models_json, address, status, protocol_version, joined_at, last_seen, pubkey, verified)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         data["peer_id"],
                         data.get("model"),
+                        _dumps(supported_models),
                         data.get("address"),
                         str(status) if status is not None else None,
                         data.get("protocol_version"),
                         data.get("joined_at"),
                         data.get("last_seen"),
                         pubkey,
+                        verified,
                     ),
                 )
                 await self._conn.commit()
@@ -233,6 +263,153 @@ class ChorusDB:
                 await self._conn.commit()
         except Exception as exc:  # noqa: BLE001
             logger.warning("append_event failed: %s", exc)
+
+    async def save_attachment(self, record: "AttachmentRecord") -> None:
+        if self._conn is None or self._lock is None:
+            return
+        try:
+            data = record.model_dump()
+            async with self._lock:
+                await self._conn.execute(
+                    """
+                    INSERT OR REPLACE INTO attachments
+                      (attachment_id, workspace_id, filename, media_type, kind, size_bytes,
+                       storage_path, preview_text, extracted_text, metadata_json, created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        data["attachment_id"],
+                        data["workspace_id"],
+                        data["filename"],
+                        data["media_type"],
+                        data["kind"],
+                        int(data["size_bytes"]),
+                        data["storage_path"],
+                        data["preview_text"],
+                        data["extracted_text"],
+                        _dumps(data.get("metadata") or {}),
+                        float(data["created_at"]),
+                    ),
+                )
+                await self._conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("save_attachment failed: %s", exc)
+
+    async def get_attachment(
+        self,
+        attachment_id: str,
+        *,
+        workspace_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        if self._conn is None:
+            return None
+        try:
+            if workspace_id is None:
+                query = """
+                    SELECT attachment_id, workspace_id, filename, media_type, kind, size_bytes,
+                           storage_path, preview_text, extracted_text, metadata_json, created_at
+                      FROM attachments WHERE attachment_id=?
+                """
+                params = (attachment_id,)
+            else:
+                query = """
+                    SELECT attachment_id, workspace_id, filename, media_type, kind, size_bytes,
+                           storage_path, preview_text, extracted_text, metadata_json, created_at
+                      FROM attachments WHERE attachment_id=? AND workspace_id=?
+                """
+                params = (attachment_id, workspace_id)
+            async with self._conn.execute(query, params) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                return None
+            (
+                rid,
+                record_workspace_id,
+                filename,
+                media_type,
+                kind,
+                size_bytes,
+                storage_path,
+                preview_text,
+                extracted_text,
+                metadata_json,
+                created_at,
+            ) = row
+            try:
+                metadata = json.loads(metadata_json) if metadata_json else {}
+            except Exception:  # noqa: BLE001
+                metadata = {}
+            return {
+                "attachment_id": rid,
+                "workspace_id": record_workspace_id,
+                "filename": filename,
+                "media_type": media_type,
+                "kind": kind,
+                "size_bytes": int(size_bytes or 0),
+                "storage_path": storage_path,
+                "preview_text": preview_text,
+                "extracted_text": extracted_text,
+                "metadata": metadata,
+                "created_at": created_at,
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("get_attachment failed: %s", exc)
+            return None
+
+    async def list_attachments(self, workspace_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        if self._conn is None:
+            return []
+        try:
+            async with self._conn.execute(
+                """
+                SELECT attachment_id, workspace_id, filename, media_type, kind, size_bytes,
+                       storage_path, preview_text, extracted_text, metadata_json, created_at
+                  FROM attachments
+                 WHERE workspace_id=?
+                 ORDER BY created_at DESC
+                 LIMIT ?
+                """,
+                (workspace_id, int(limit)),
+            ) as cur:
+                rows = await cur.fetchall()
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                (
+                    rid,
+                    record_workspace_id,
+                    filename,
+                    media_type,
+                    kind,
+                    size_bytes,
+                    storage_path,
+                    preview_text,
+                    extracted_text,
+                    metadata_json,
+                    created_at,
+                ) = row
+                try:
+                    metadata = json.loads(metadata_json) if metadata_json else {}
+                except Exception:  # noqa: BLE001
+                    metadata = {}
+                items.append(
+                    {
+                        "attachment_id": rid,
+                        "workspace_id": record_workspace_id,
+                        "filename": filename,
+                        "media_type": media_type,
+                        "kind": kind,
+                        "size_bytes": int(size_bytes or 0),
+                        "storage_path": storage_path,
+                        "preview_text": preview_text,
+                        "extracted_text": extracted_text,
+                        "metadata": metadata,
+                        "created_at": created_at,
+                    }
+                )
+            return items
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("list_attachments failed: %s", exc)
+            return []
 
     async def list_chats(
         self,

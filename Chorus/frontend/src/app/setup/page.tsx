@@ -33,7 +33,13 @@ import {
 } from '@/lib/api/orchestrator'
 import { isLoopbackOllamaHost, isPrivateLanIpv4 } from '@/lib/lan/chat-proxy-allow'
 import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
-import { readWorkspaceId, readWorkspaceToken, writeWorkspaceId, writeWorkspaceToken } from '@/lib/workspace-config'
+import {
+  getOrCreateWorkspaceId,
+  readWorkspaceToken,
+  regenerateWorkspaceId,
+  writeWorkspaceId,
+  writeWorkspaceToken,
+} from '@/lib/workspace-config'
 
 type PathMode = 'local' | 'tunnel'
 type TunnelProvider = 'ngrok' | 'cloudflared'
@@ -135,7 +141,7 @@ export default function SetupPage() {
       override ?? getEffectiveOrchestratorBase() ?? suggestLocalOrchestratorBase() ?? ''
     setOrchestratorBase(existingOrchestrator)
     setOrchestratorBaseFromEnv(!override && envBase.length > 0)
-    setWorkspaceId(readWorkspaceId())
+    setWorkspaceId(getOrCreateWorkspaceId())
     setWorkspaceToken(readWorkspaceToken())
   }, [])
 
@@ -158,6 +164,11 @@ export default function SetupPage() {
   useEffect(() => {
     writeWorkspaceToken(workspaceToken)
   }, [workspaceToken])
+
+  const onRegenerateWorkspaceId = useCallback(() => {
+    const next = regenerateWorkspaceId()
+    setWorkspaceId(next)
+  }, [])
 
   const hydratedRef = useRef(false)
   useEffect(() => {
@@ -265,12 +276,22 @@ export default function SetupPage() {
   }, [orchestratorBase, origin])
 
   const onFinishSetup = useCallback(async () => {
+    if (!workspaceId.trim()) {
+      setProbePhase('error')
+      setProbeMessage('Generate or enter a workspace id before opening the workspace.')
+      return
+    }
+    if (!workspaceToken.trim()) {
+      setProbePhase('error')
+      setProbeMessage('Enter your workspace token for this browser session before continuing.')
+      return
+    }
     onConnectOrchestrator()
     const ok = await probeOrchestrator()
     if (ok && typeof window !== 'undefined') {
       window.location.href = '/'
     }
-  }, [onConnectOrchestrator, probeOrchestrator])
+  }, [onConnectOrchestrator, probeOrchestrator, workspaceId, workspaceToken])
 
   const installCommands: Record<OsKey, { code: string; note?: string }> = {
     macos: {
@@ -289,30 +310,30 @@ export default function SetupPage() {
 
   const networkCommandsLan: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: '# Quit the tray app, then in Terminal:\nOLLAMA_HOST=0.0.0.0 ollama serve',
+      code: '# Stop any running Ollama instance first\npkill -x Ollama || true\npkill -x ollama || true\nOLLAMA_HOST=0.0.0.0 ollama serve',
       note: TRAY_WARNING,
     },
     windows: {
-      code: '$env:OLLAMA_HOST = "0.0.0.0"\nollama serve',
+      code: 'Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve',
       note: TRAY_WARNING,
     },
     linux: {
-      code: 'sudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_HOST=0.0.0.0"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama',
+      code: 'sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_HOST=0.0.0.0"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama',
       note: 'Or for a one-off: `OLLAMA_HOST=0.0.0.0 ollama serve`.',
     },
   }
 
   const networkCommandsTunnel: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: `# Terminal #1\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve`,
+      code: `# Terminal #1\npkill -x Ollama || true\npkill -x ollama || true\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve`,
       note: TRAY_WARNING,
     },
     windows: {
-      code: `$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve`,
+      code: `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve`,
       note: TRAY_WARNING,
     },
     linux: {
-      code: `sudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_ORIGINS=${origin}"\n#   Environment="OLLAMA_HOST=127.0.0.1"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama`,
+      code: `sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_ORIGINS=${origin}"\n#   Environment="OLLAMA_HOST=127.0.0.1"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama`,
     },
   }
 
@@ -532,7 +553,7 @@ export default function SetupPage() {
         icon={<Radio size={18} />}
         eyebrow={`Step ${totalSteps} of ${totalSteps}`}
         title="Connect your workspace"
-        subtitle="Save the control plane URL and optional workspace credentials used by protected deployments."
+        subtitle="Save the control plane URL, keep the generated workspace id, and enter the token for this browser session."
       >
         {!orchestratorBase.trim() && !orchestratorBaseFromEnv && (
           <Notice kind="info" title="No control plane configured">
@@ -551,13 +572,29 @@ export default function SetupPage() {
           style={inputStyle}
         />
 
-        <div style={{ display: 'grid', gap: '0.6rem', gridTemplateColumns: '1fr 1fr' }}>
+        <div style={{ display: 'grid', gap: '0.6rem', gridTemplateColumns: '1.15fr 1fr' }}>
           <div>
-            <label style={fieldLabelStyle}>Workspace id</label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+              <label style={fieldLabelStyle}>Workspace id</label>
+              <button
+                type="button"
+                onClick={onRegenerateWorkspaceId}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'rgba(180, 210, 255, 0.9)',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  padding: 0,
+                }}
+              >
+                Generate new id
+              </button>
+            </div>
             <input
               value={workspaceId}
               onChange={(e) => setWorkspaceId(e.target.value)}
-              placeholder="team-alpha"
+              placeholder="workspace-xxxxxxx"
               autoComplete="off"
               spellCheck={false}
               style={inputStyle}
@@ -568,7 +605,7 @@ export default function SetupPage() {
             <input
               value={workspaceToken}
               onChange={(e) => setWorkspaceToken(e.target.value)}
-              placeholder="optional"
+              placeholder="enter token for this session"
               type="password"
               autoComplete="off"
               spellCheck={false}
@@ -578,7 +615,7 @@ export default function SetupPage() {
         </div>
 
         <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.42)', lineHeight: 1.5 }}>
-          The workspace id is saved in local storage. The workspace token stays in this browser session so auth wiring can be added without changing the setup flow.
+          The workspace id stays in local storage so the same browser keeps its routing identity. The workspace token stays in session storage, so users need to enter it again when they come back in a new session.
         </p>
 
         <button

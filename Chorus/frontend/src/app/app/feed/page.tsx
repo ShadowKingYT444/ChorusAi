@@ -7,7 +7,6 @@ import { Suspense, useEffect, useRef } from 'react'
 import { Activity, Clock, Database, Zap, Server } from 'lucide-react'
 import { useSharedJobRuntime } from '@/lib/runtime/job-runtime-provider'
 import { useOrchestratorMetrics } from '@/lib/runtime/use-metrics'
-import { getReviewMode, getReviewTemplate } from '@/lib/review-config'
 
 function WaveformSparkline({ color, seed = 0, speed = 0.6 }: {
   color: string
@@ -169,8 +168,6 @@ function FeedPageContent() {
 
   const connectedPeers = runtime.connectedPeers
   const hasSession = Boolean(runtime.session ?? job)
-  const reviewMode = runtime.session?.reviewMode ? getReviewMode(runtime.session.reviewMode) : null
-  const reviewTemplate = runtime.session?.reviewTemplate ? getReviewTemplate(runtime.session.reviewTemplate) : null
   const shadowCredits = hasSession ? (runtime.session ?? job)!.agentCount * (runtime.session ?? job)!.rounds : 0
 
   return (
@@ -196,11 +193,9 @@ function FeedPageContent() {
                     <p className="font-sans text-[15px] text-white/90 leading-relaxed font-light">
                       &quot;{(runtime.session ?? job)!.prompt}&quot;
                     </p>
-                    {(reviewTemplate || reviewMode) && (
-                      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/35">
-                        {[reviewTemplate?.label, reviewMode?.label].filter(Boolean).join(' · ')}
-                      </div>
-                    )}
+                    <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/35">
+                      {(runtime.session ?? job)!.agentCount} voices · {(runtime.session ?? job)!.rounds} rounds
+                    </div>
                   </>
                 ) : (
                   <p className="font-sans text-[14px] text-white/30 italic">
@@ -261,12 +256,6 @@ function FeedPageContent() {
                       {hasSession ? runtime.status.toUpperCase() : 'IDLE'}
                     </span>
                   </div>
-                  {runtime.session?.workspaceId && (
-                    <div className="mt-1.5">
-                      <span className="text-white/40">Workspace: </span>
-                      <span className="text-white/80">{runtime.session.workspaceId}</span>
-                    </div>
-                  )}
                 </div>
               </div>
               <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">

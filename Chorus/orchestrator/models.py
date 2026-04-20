@@ -28,6 +28,7 @@ class PeerEntry(BaseModel):
     peer_id: str
     address: str | None = None
     model: str
+    supported_models: list[str] = Field(default_factory=list)
     protocol_version: str = "1"
     joined_at: float
     last_seen: float
@@ -95,6 +96,7 @@ class RegisterMessage(BaseModel):
     peer_id: str
     address: str | None = None
     model: str
+    supported_models: list[str] | None = None
     protocol_version: str = "1"
     status: PeerStatus = PeerStatus.idle
     pubkey: str | None = None
@@ -123,6 +125,7 @@ class JoinRequestMessage(BaseModel):
     peer_id: str
     address: str
     model: str
+    supported_models: list[str] | None = None
     protocol_version: str = "1"
 
 
@@ -130,6 +133,7 @@ class JoinPeerRef(BaseModel):
     peer_id: str
     address: str | None = None
     model: str
+    supported_models: list[str] = Field(default_factory=list)
     last_seen: float
 
 
@@ -139,6 +143,7 @@ class MeshConnectRequestMessage(BaseModel):
     peer_id: str
     address: str | None = None
     model: str
+    supported_models: list[str] | None = None
 
 
 class MeshConnectAcceptMessage(BaseModel):
@@ -217,6 +222,8 @@ class JobSpec(BaseModel):
     embedding_model_version: str | None = None
     review_mode: str | None = None
     template_id: str | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
+    completion_model: str | None = None
 
 
 class CreateJobRequest(JobSpec):
@@ -234,6 +241,7 @@ class SlotRegistration(BaseModel):
     completion_base_url: str = Field(min_length=1)
     bearer_token: str | None = None
     external_participant_id: str | None = None
+    model_id: str | None = None
 
 
 class RegisterAgentsRequest(BaseModel):
@@ -313,6 +321,8 @@ class JobPublicView(BaseModel):
     settlement_preview: dict[str, Any] | None = None
     final_answer: str | None = None
     citations: list[str] | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
+    completion_model: str | None = None
 
 
 class OperatorView(BaseModel):
@@ -327,3 +337,34 @@ class OperatorView(BaseModel):
     settlement_preview: dict[str, Any] | None = None
     final_answer: str | None = None
     citations: list[str] | None = None
+    attachment_ids: list[str] = Field(default_factory=list)
+    completion_model: str | None = None
+
+
+class AttachmentRecord(BaseModel):
+    attachment_id: str
+    workspace_id: str
+    filename: str
+    media_type: str
+    kind: str
+    size_bytes: int
+    storage_path: str
+    preview_text: str
+    extracted_text: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: float
+
+
+class AttachmentUploadResponse(BaseModel):
+    attachments: list[AttachmentRecord]
+
+
+class AvailableModelEntry(BaseModel):
+    model_id: str
+    source: Literal["peer", "anchor"]
+    route_count: int = 1
+    peer_ids: list[str] = Field(default_factory=list)
+
+
+class AvailableModelsResponse(BaseModel):
+    models: list[AvailableModelEntry]

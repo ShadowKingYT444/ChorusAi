@@ -100,7 +100,7 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
         ) : (
           sorted.map((c, i) => {
             const snippet = firstUserSnippet(c)
-            const cadence = c.reviewMode ?? `${c.voices} reviewers`
+            const cadence = `${c.voices} voices · ${c.rounds ?? 1} rounds`
             return (
               <motion.div
                 key={c.id}

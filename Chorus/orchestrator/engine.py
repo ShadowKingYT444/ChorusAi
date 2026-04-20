@@ -285,8 +285,13 @@ class RoundEngine:
 
         final_text: str | None = None
         if target_url is not None:
+            merge_model = (
+                os.getenv("ORC_MERGE_MODEL", "").strip()
+                or (job.spec.completion_model or "").strip()
+                or OLLAMA_MODEL
+            )
             payload = {
-                "model": os.getenv("ORC_MERGE_MODEL", OLLAMA_MODEL),
+                "model": merge_model,
                 "messages": [
                     {"role": "system", "content": MERGE_SYSTEM_PROMPT},
                     {

@@ -68,6 +68,7 @@ class PeerRegistry:
         peer_id: str,
         model: str,
         *,
+        supported_models: list[str] | None = None,
         address: str | None = None,
         protocol_version: str = "1",
         status: PeerStatus = PeerStatus.idle,
@@ -80,6 +81,7 @@ class PeerRegistry:
                 peer_id=peer_id,
                 address=address,
                 model=model,
+                supported_models=list(supported_models or []),
                 protocol_version=protocol_version,
                 joined_at=now,
                 last_seen=now,
@@ -267,6 +269,8 @@ class JobStore:
             settlement_preview=job.settlement_preview,
             final_answer=job.final_answer,
             citations=job.citations,
+            attachment_ids=list(job.spec.attachment_ids),
+            completion_model=job.spec.completion_model,
         )
 
     async def operator_view(self, job_id: str, workspace_id: str | None = None) -> OperatorView | None:
@@ -285,6 +289,8 @@ class JobStore:
             settlement_preview=job.settlement_preview,
             final_answer=job.final_answer,
             citations=job.citations,
+            attachment_ids=list(job.spec.attachment_ids),
+            completion_model=job.spec.completion_model,
         )
 
     async def workspace_summary(self, workspace_id: str) -> dict[str, int]:

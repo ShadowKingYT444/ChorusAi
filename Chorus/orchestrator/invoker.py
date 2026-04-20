@@ -90,8 +90,13 @@ class AgentInvoker:
             if registration.bearer_token:
                 headers["Authorization"] = f"Bearer {registration.bearer_token}"
 
+            completion_model = (
+                (registration.model_id or "").strip()
+                or (job.spec.completion_model or "").strip()
+                or self.completion_model
+            )
             payload = {
-                "model": self.completion_model,
+                "model": completion_model,
                 "messages": [
                     {"role": "system", "content": persona + "\n\nRespond in 2-3 sentences. Be direct and specific. Do not repeat the prompt, list instructions, or explain your reasoning process."},
                     {

@@ -5,11 +5,13 @@ import hashlib
 import logging
 import os
 import uuid
+from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
+from orchestrator.attachments import build_attachment_context, build_attachment_record, persist_upload
 from orchestrator.auth import require_workspace_http, require_workspace_websocket
 from orchestrator.broadcast_completions import post_chat_completion
 from orchestrator.engine import RoundEngine
@@ -27,6 +29,10 @@ from orchestrator.models import (
     ClusterEntry,
     ClusterStats,
     ClustersResponse,
+    AttachmentRecord,
+    AttachmentUploadResponse,
+    AvailableModelEntry,
+    AvailableModelsResponse,
     CreateJobRequest,
     CreateJobResponse,
     HeartbeatMessage,
@@ -229,6 +235,7 @@ async def _register_peer(
     protocol_version: str = "1",
     pubkey: str | None = None,
     verified: bool = False,
+    supported_models: list[str] | None = None,
 ) -> PeerEntry:
     async with _conn_lock:
         prev = _ws_by_peer_id.get(peer_id)
@@ -242,6 +249,7 @@ async def _register_peer(
     entry: PeerEntry = await registry.register(
         peer_id,
         model,
+        supported_models=supported_models,
         address=address,
         protocol_version=protocol_version,
         pubkey=pubkey,
@@ -260,6 +268,7 @@ async def _assigned_mesh_for(peer_id: str, max_targets: int = 5) -> list[JoinPee
             peer_id=p.peer_id,
             address=p.address,
             model=p.model,
+            supported_models=list(p.supported_models),
             last_seen=p.last_seen,
         )
         for p in selected
@@ -270,6 +279,25 @@ def _parse_csv_env(name: str) -> list[str]:
     return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
 
 
+def _normalize_supported_models(model: str, supported_models: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in [model, *(supported_models or [])]:
+        candidate = (value or "").strip()
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        ordered.append(candidate)
+    return ordered
+
+
+def _peer_supports_model(peer: PeerEntry, completion_model: str | None) -> bool:
+    if not completion_model:
+        return True
+    supported = _normalize_supported_models(peer.model, peer.supported_models)
+    return completion_model in supported
+
+
 def _is_supported_auto_route(address: str) -> bool:
     stripped = address.strip()
     return stripped.startswith("demo://") or stripped.startswith("http://") or stripped.startswith("https://")
@@ -278,15 +306,21 @@ def _is_supported_auto_route(address: str) -> bool:
 def _anchor_registrations() -> list[tuple[str, SlotRegistration]]:
     urls = _parse_csv_env("ORC_ANCHOR_COMPLETION_BASE_URLS")
     bearer_tokens = _parse_csv_env("ORC_ANCHOR_BEARER_TOKENS")
+    model_ids = _parse_csv_env("ORC_ANCHOR_MODEL_IDS")
     out: list[tuple[str, SlotRegistration]] = []
     for index, url in enumerate(urls, start=1):
         if not _is_supported_auto_route(url):
             continue
         bearer_token: str | None = None
+        model_id: str | None = None
         if len(bearer_tokens) == 1:
             bearer_token = bearer_tokens[0]
         elif index - 1 < len(bearer_tokens):
             bearer_token = bearer_tokens[index - 1]
+        if len(model_ids) == 1:
+            model_id = model_ids[0]
+        elif index - 1 < len(model_ids):
+            model_id = model_ids[index - 1]
         out.append(
             (
                 f"anchor-{index}",
@@ -294,6 +328,7 @@ def _anchor_registrations() -> list[tuple[str, SlotRegistration]]:
                     completion_base_url=url,
                     bearer_token=bearer_token,
                     external_participant_id=f"anchor-{index}",
+                    model_id=model_id,
                 ),
             )
         )
@@ -304,11 +339,14 @@ async def _resolve_auto_slots(
     *,
     agent_count: int,
     target_peer_ids: list[str] | None,
+    completion_model: str | None,
 ) -> dict[str, SlotRegistration]:
     resolved: dict[str, SlotRegistration] = {}
     for slot_id, registration in _anchor_registrations():
         if len(resolved) >= agent_count:
             break
+        if completion_model and registration.model_id and registration.model_id != completion_model:
+            continue
         resolved[slot_id] = registration
 
     peers = await registry.list_peers()
@@ -319,6 +357,7 @@ async def _resolve_auto_slots(
         if peer.address
         and _is_supported_auto_route(str(peer.address))
         and (allow is None or peer.peer_id in allow)
+        and _peer_supports_model(peer, completion_model)
     ]
     candidates.sort(key=lambda peer: (not peer.verified, peer.status.value != "idle", -peer.last_seen, peer.peer_id))
     for peer in candidates:
@@ -328,6 +367,7 @@ async def _resolve_auto_slots(
         resolved[slot_id] = SlotRegistration(
             completion_base_url=str(peer.address).strip(),
             external_participant_id=peer.peer_id,
+            model_id=completion_model or peer.model,
         )
 
     if len(resolved) != agent_count:
@@ -446,7 +486,27 @@ async def create_job(req: CreateJobRequest, request: Request) -> CreateJobRespon
             detail="rate_limited",
             headers={"Retry-After": str(max(1, int(retry_after)))},
         )
-    job = await job_store.create_job(req, workspace_id=principal.workspace_id)
+    effective_req = req
+    if req.attachment_ids:
+        db = getattr(app.state, "db", None)
+        if db is None:
+            raise HTTPException(status_code=503, detail="db_unavailable")
+        attachment_records: list[AttachmentRecord] = []
+        for attachment_id in req.attachment_ids:
+            raw = await db.get_attachment(attachment_id, workspace_id=principal.workspace_id)
+            if raw is None:
+                raise HTTPException(status_code=404, detail=f"attachment_not_found:{attachment_id}")
+            attachment_records.append(AttachmentRecord.model_validate(raw))
+        attachment_context = build_attachment_context(attachment_records)
+        merged_context = req.context.strip()
+        if attachment_context:
+            merged_context = (
+                f"{merged_context}\n\n### Attached Materials\n"
+                "Use these extracted materials as review evidence. File content may be partial.\n"
+                f"{attachment_context}"
+            ).strip()
+        effective_req = req.model_copy(update={"context": merged_context})
+    job = await job_store.create_job(effective_req, workspace_id=principal.workspace_id)
     METRICS.inc("shadow_credits_reserved_total", float(job.shadow_credit_cost))
     return CreateJobResponse(
         job_id=job.job_id,
@@ -474,13 +534,14 @@ async def register_job_agents(job_id: str, req: RegisterAgentsRequest, request: 
     else:
         routing_mode = "auto"
         resolved_req = RegisterAgentsRequest(
-            slots=await _resolve_auto_slots(
-                agent_count=job.spec.agent_count,
+                slots=await _resolve_auto_slots(
+                    agent_count=job.spec.agent_count,
+                    target_peer_ids=req.target_peer_ids,
+                    completion_model=job.spec.completion_model,
+                ),
+                routing_mode="auto",
                 target_peer_ids=req.target_peer_ids,
-            ),
-            routing_mode="auto",
-            target_peer_ids=req.target_peer_ids,
-        )
+            )
     try:
         job = await job_store.register_agents(
             job_id,
@@ -529,6 +590,90 @@ async def get_job_responses(job_id: str, request: Request) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return {"job_id": job_id, "responses": _job_response_buffer.get(job_id, [])}
+
+
+@app.get("/models", response_model=AvailableModelsResponse)
+async def list_available_models(request: Request) -> AvailableModelsResponse:
+    require_workspace_http(request)
+    routes: dict[str, AvailableModelEntry] = {}
+    for peer in await registry.list_peers():
+        for model_id in _normalize_supported_models(peer.model, peer.supported_models):
+            entry = routes.get(model_id)
+            if entry is None:
+                entry = AvailableModelEntry(
+                    model_id=model_id,
+                    source="peer",
+                    route_count=0,
+                    peer_ids=[],
+                )
+                routes[model_id] = entry
+            entry.route_count += 1
+            if peer.peer_id not in entry.peer_ids:
+                entry.peer_ids.append(peer.peer_id)
+    for _slot_id, registration in _anchor_registrations():
+        model_id = (registration.model_id or "").strip()
+        if not model_id:
+            continue
+        entry = routes.get(model_id)
+        if entry is None:
+            entry = AvailableModelEntry(model_id=model_id, source="anchor", route_count=0, peer_ids=[])
+            routes[model_id] = entry
+        else:
+            entry.source = "anchor" if entry.source == "anchor" else "peer"
+        entry.route_count += 1
+    models = sorted(routes.values(), key=lambda item: (-item.route_count, item.model_id))
+    return AvailableModelsResponse(models=models)
+
+
+@app.post("/attachments", response_model=AttachmentUploadResponse)
+async def upload_attachments(
+    request: Request,
+    files: list[UploadFile] = File(...),
+) -> AttachmentUploadResponse:
+    principal = require_workspace_http(request)
+    if not files:
+        raise HTTPException(status_code=400, detail="attachments_required")
+    db = getattr(app.state, "db", None)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    saved: list[AttachmentRecord] = []
+    for upload in files:
+        prepared = await persist_upload(upload, principal.workspace_id)
+        record = build_attachment_record(prepared, principal.workspace_id)
+        await db.save_attachment(record)
+        saved.append(record)
+    return AttachmentUploadResponse(attachments=saved)
+
+
+@app.get("/attachments", response_model=AttachmentUploadResponse)
+async def list_workspace_attachments(request: Request, limit: int = 100) -> AttachmentUploadResponse:
+    principal = require_workspace_http(request)
+    db = getattr(app.state, "db", None)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    raw = await db.list_attachments(principal.workspace_id, limit=limit)
+    return AttachmentUploadResponse(attachments=[AttachmentRecord.model_validate(item) for item in raw])
+
+
+@app.get("/attachments/{attachment_id}", response_model=AttachmentRecord)
+async def get_attachment_record(attachment_id: str, request: Request) -> AttachmentRecord:
+    principal = require_workspace_http(request)
+    db = getattr(app.state, "db", None)
+    if db is None:
+        raise HTTPException(status_code=503, detail="db_unavailable")
+    raw = await db.get_attachment(attachment_id, workspace_id=principal.workspace_id)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="attachment_not_found")
+    return AttachmentRecord.model_validate(raw)
+
+
+@app.get("/attachments/{attachment_id}/content")
+async def download_attachment_content(attachment_id: str, request: Request) -> FileResponse:
+    record = await get_attachment_record(attachment_id, request)
+    path = Path(record.storage_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="attachment_content_missing")
+    return FileResponse(path, media_type=record.media_type, filename=record.filename)
 
 
 @app.get("/jobs/{job_id}/response-summary")
@@ -758,6 +903,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
                     protocol_version=payload.protocol_version,
                     pubkey=payload.pubkey,
                     verified=verified,
+                    supported_models=_normalize_supported_models(payload.model, payload.supported_models),
                 )
                 await registry.set_status(payload.peer_id, payload.status)
                 peers_live = await registry.list_peers()
@@ -780,6 +926,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
                     model=payload.model,
                     address=payload.address,
                     protocol_version=payload.protocol_version,
+                    supported_models=_normalize_supported_models(payload.model, payload.supported_models),
                 )
                 assigned_mesh = await _assigned_mesh_for(payload.peer_id, max_targets=5)
                 known_snapshot = [
@@ -787,6 +934,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
                         peer_id=p.peer_id,
                         address=p.address,
                         model=p.model,
+                        supported_models=list(p.supported_models),
                         last_seen=p.last_seen,
                     ).model_dump()
                     for p in await registry.list_known_peers()
@@ -863,6 +1011,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
                             peer_id=p.peer_id,
                             address=p.address,
                             model=p.model,
+                            supported_models=list(p.supported_models),
                             joined_at=p.last_seen,
                             last_seen=p.last_seen,
                         )
@@ -894,6 +1043,7 @@ async def ws_signaling(websocket: WebSocket) -> None:
                         "peer_id": payload.peer_id,
                         "address": payload.address,
                         "model": payload.model,
+                        "supported_models": payload.supported_models,
                     },
                 )
                 await websocket.send_json(

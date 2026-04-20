@@ -6,16 +6,12 @@ import type {
   SettlementPreview,
 } from '@/lib/api/orchestrator'
 import type { AgentMessage, Cluster, ClusterID, SimulationResults, SimulationJob } from '@/lib/mock-data'
-import type { ReviewModeId, ReviewTemplateId } from '@/lib/review-config'
 
 export interface SimulationSession extends SimulationJob {
   jobId?: string
   mode: 'mock' | 'backend'
   createdAt: string
   launchedPeers?: PeerEntry[]
-  reviewTemplate?: ReviewTemplateId
-  reviewMode?: ReviewModeId
-  workspaceId?: string
 }
 
 export interface RuntimeMessage extends AgentMessage {
