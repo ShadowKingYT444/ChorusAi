@@ -571,14 +571,14 @@ export default function JoinLanPage() {
           </span>
         </nav>
         <p style={{ fontSize: '11px', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.45)', marginBottom: '0.5rem' }}>
-          CHORUS · LAN
+          CHORUS · REVIEW CAPACITY
         </p>
-        <h1 style={{ fontSize: '1.35rem', fontWeight: 600, marginBottom: '0.35rem' }}>Join this network</h1>
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 600, marginBottom: '0.35rem' }}>Attach reviewer capacity</h1>
         <p style={{ fontSize: '14px', lineHeight: 1.55, color: 'rgba(255,255,255,0.58)', marginBottom: '1.75rem' }}>
-          Register this browser on signaling. Set your <strong style={{ color: 'rgba(255,255,255,0.85)' }}>public model
-          URL</strong> (ngrok, LAN IP, etc.) so the host can call your OpenAI-compatible{' '}
+          Register this browser on signaling. Set your <strong style={{ color: 'rgba(255,255,255,0.85)' }}>review endpoint
+          URL</strong> (ngrok, LAN IP, etc.) so Chorus can call your OpenAI-compatible{' '}
           <span style={{ fontFamily: 'var(--font-geist-mono), monospace', fontSize: '12px' }}>/v1/chat/completions</span>.
-          When the host runs a job, you will see the prompt here.
+          When a review runs, you will see the brief here.
         </p>
 
         {hasCheckedSetup && modelPublicUrl === '' && (
@@ -594,7 +594,7 @@ export default function JoinLanPage() {
               lineHeight: 1.55,
             }}
           >
-            Your peer cannot answer jobs until this field is set. Need help setting up Ollama?{' '}
+            This endpoint cannot answer review jobs until this field is set. Need help setting up Ollama?{' '}
             <Link
               href="/setup"
               style={{
@@ -618,7 +618,7 @@ export default function JoinLanPage() {
           }}
         >
           <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>
-            Label (shown in /peers)
+            Reviewer label
           </label>
           <input
             value={modelLabel}
@@ -663,13 +663,13 @@ export default function JoinLanPage() {
             }}
           />
           <p style={{ fontSize: '11px', lineHeight: 1.45, color: 'rgba(255,255,255,0.38)', marginBottom: '1rem' }}>
-            If several logical agents share this mesh connection, give each a distinct id so the host feed can show
+            If several logical reviewers share this connection, give each a distinct id so the live trace can show
             them separately (<code style={{ fontSize: '10px' }}>peer_id#instance_id</code>). Verify counts with{' '}
             <code style={{ fontSize: '10px' }}>GET /jobs/&lt;job_id&gt;/response-summary</code> on the orchestrator.
           </p>
 
           <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>
-            Public model API base
+            Review endpoint base
           </label>
           <input
             value={modelPublicUrl}
@@ -761,7 +761,7 @@ export default function JoinLanPage() {
                   cursor: phase === 'connecting' ? 'wait' : 'pointer',
                 }}
               >
-                {phase === 'connecting' ? 'Connecting…' : 'Join network'}
+                {phase === 'connecting' ? 'Connecting…' : 'Attach capacity'}
               </button>
             ) : (
               <>
@@ -779,7 +779,7 @@ export default function JoinLanPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  Leave
+                  Detach
                 </button>
                 <button
                   type="button"
@@ -795,7 +795,7 @@ export default function JoinLanPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  Push URL to server
+                  Sync endpoint
                 </button>
               </>
             )}
@@ -823,7 +823,7 @@ export default function JoinLanPage() {
             }}
           >
             <p style={{ fontSize: '11px', letterSpacing: '0.1em', color: 'rgba(200,220,255,0.65)', marginBottom: '0.35rem' }}>
-              LAST PROMPT ({lastTask.kind}) · {lastTask.job_id.slice(0, 8)}…
+              LAST REVIEW ({lastTask.kind}) · {lastTask.job_id.slice(0, 8)}…
             </p>
             {lastTask.from_peer_id && (
               <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)', marginBottom: '0.5rem' }}>
@@ -865,7 +865,7 @@ export default function JoinLanPage() {
             Each tab gets its own peer id (sessionStorage). The signaling server keeps one connection per id - multiple
             tabs used to share localStorage and looked like a single peer.
           </div>
-          <div style={{ marginBottom: '0.25rem' }}>Peers online: {peers.length}</div>
+          <div style={{ marginBottom: '0.25rem' }}>Capacity endpoints online: {peers.length}</div>
           <ul style={{ margin: 0, paddingLeft: '1.1rem', maxHeight: '14rem', overflow: 'auto' }}>
             {peers.map((p) => (
               <li key={p.peer_id} style={{ marginBottom: '0.35rem' }}>

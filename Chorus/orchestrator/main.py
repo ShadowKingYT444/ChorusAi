@@ -10,6 +10,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocke
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from orchestrator.auth import require_workspace_http, require_workspace_websocket
 from orchestrator.broadcast_completions import post_chat_completion
 from orchestrator.engine import RoundEngine
 from orchestrator.lifespan import lifespan
@@ -47,6 +48,7 @@ from orchestrator.models import (
     RelayMessage,
     SetAddressMessage,
     SetStatusMessage,
+    SlotRegistration,
 )
 from orchestrator.crypto import verify_b64
 from orchestrator.identity import get_orchestrator_keypair
@@ -264,6 +266,89 @@ async def _assigned_mesh_for(peer_id: str, max_targets: int = 5) -> list[JoinPee
     ]
 
 
+def _parse_csv_env(name: str) -> list[str]:
+    return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
+
+
+def _is_supported_auto_route(address: str) -> bool:
+    stripped = address.strip()
+    return stripped.startswith("demo://") or stripped.startswith("http://") or stripped.startswith("https://")
+
+
+def _anchor_registrations() -> list[tuple[str, SlotRegistration]]:
+    urls = _parse_csv_env("ORC_ANCHOR_COMPLETION_BASE_URLS")
+    bearer_tokens = _parse_csv_env("ORC_ANCHOR_BEARER_TOKENS")
+    out: list[tuple[str, SlotRegistration]] = []
+    for index, url in enumerate(urls, start=1):
+        if not _is_supported_auto_route(url):
+            continue
+        bearer_token: str | None = None
+        if len(bearer_tokens) == 1:
+            bearer_token = bearer_tokens[0]
+        elif index - 1 < len(bearer_tokens):
+            bearer_token = bearer_tokens[index - 1]
+        out.append(
+            (
+                f"anchor-{index}",
+                SlotRegistration(
+                    completion_base_url=url,
+                    bearer_token=bearer_token,
+                    external_participant_id=f"anchor-{index}",
+                ),
+            )
+        )
+    return out
+
+
+async def _resolve_auto_slots(
+    *,
+    agent_count: int,
+    target_peer_ids: list[str] | None,
+) -> dict[str, SlotRegistration]:
+    resolved: dict[str, SlotRegistration] = {}
+    for slot_id, registration in _anchor_registrations():
+        if len(resolved) >= agent_count:
+            break
+        resolved[slot_id] = registration
+
+    peers = await registry.list_peers()
+    allow = set(target_peer_ids) if target_peer_ids else None
+    candidates = [
+        peer
+        for peer in peers
+        if peer.address
+        and _is_supported_auto_route(str(peer.address))
+        and (allow is None or peer.peer_id in allow)
+    ]
+    candidates.sort(key=lambda peer: (not peer.verified, peer.status.value != "idle", -peer.last_seen, peer.peer_id))
+    for peer in candidates:
+        if len(resolved) >= agent_count:
+            break
+        slot_id = peer.peer_id if peer.peer_id not in resolved else f"peer-{peer.peer_id}"
+        resolved[slot_id] = SlotRegistration(
+            completion_base_url=str(peer.address).strip(),
+            external_participant_id=peer.peer_id,
+        )
+
+    if len(resolved) != agent_count:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "insufficient_auto_routes",
+                "requested_agents": agent_count,
+                "resolved_agents": len(resolved),
+            },
+        )
+    return resolved
+
+
+async def _close_job_ws(websocket: WebSocket, code: int, reason: str) -> None:
+    try:
+        await websocket.close(code=code, reason=reason)
+    except TypeError:
+        await websocket.close(code=code)
+
+
 @app.get("/")
 async def root() -> dict[str, str]:
     return {
@@ -297,19 +382,21 @@ async def ready() -> JSONResponse:
 
 
 @app.get("/chats")
-async def get_chats(limit: int = 20, offset: int = 0) -> dict:
+async def get_chats(request: Request, limit: int = 20, offset: int = 0) -> dict:
+    principal = require_workspace_http(request)
     db = getattr(app.state, "db", None)
     if db is None:
         return {"chats": []}
-    return {"chats": await db.list_chats(limit=limit, offset=offset)}
+    return {"chats": await db.list_chats(limit=limit, offset=offset, workspace_id=principal.workspace_id)}
 
 
 @app.get("/chats/{job_id}")
-async def get_chat(job_id: str) -> dict:
+async def get_chat(job_id: str, request: Request) -> dict:
+    principal = require_workspace_http(request)
     db = getattr(app.state, "db", None)
     if db is None:
         raise HTTPException(status_code=503, detail="db_unavailable")
-    chat = await db.get_chat(job_id)
+    chat = await db.get_chat(job_id, workspace_id=principal.workspace_id)
     if not chat:
         raise HTTPException(status_code=404, detail="not_found")
     return chat
@@ -350,6 +437,7 @@ def _require_operator_token(header_value: str | None) -> None:
 
 @app.post("/jobs", response_model=CreateJobResponse)
 async def create_job(req: CreateJobRequest, request: Request) -> CreateJobResponse:
+    principal = require_workspace_http(request)
     client_ip = request.client.host if request.client else "unknown"
     retry_after = await check_rate_limit(client_ip)
     if retry_after is not None:
@@ -358,14 +446,48 @@ async def create_job(req: CreateJobRequest, request: Request) -> CreateJobRespon
             detail="rate_limited",
             headers={"Retry-After": str(max(1, int(retry_after)))},
         )
-    job = await job_store.create_job(req)
-    return CreateJobResponse(job_id=job.job_id, status=job.status)
+    job = await job_store.create_job(req, workspace_id=principal.workspace_id)
+    METRICS.inc("shadow_credits_reserved_total", float(job.shadow_credit_cost))
+    return CreateJobResponse(
+        job_id=job.job_id,
+        status=job.status,
+        workspace_id=job.workspace_id,
+        shadow_credit_cost=job.shadow_credit_cost,
+    )
 
 
 @app.post("/jobs/{job_id}/agents", response_model=RegisterAgentsResponse)
-async def register_job_agents(job_id: str, req: RegisterAgentsRequest) -> RegisterAgentsResponse:
+async def register_job_agents(job_id: str, req: RegisterAgentsRequest, request: Request) -> RegisterAgentsResponse:
+    principal = require_workspace_http(request)
+    job = await job_store.get_job(job_id, workspace_id=principal.workspace_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    if req.routing_mode == "manual" and not req.slots:
+        raise HTTPException(status_code=400, detail="manual routing requires slots")
+    if req.routing_mode == "auto" and req.slots:
+        raise HTTPException(status_code=400, detail="auto routing must not include manual slots")
+
+    if req.slots:
+        resolved_req = req
+        routing_mode = "manual"
+    else:
+        routing_mode = "auto"
+        resolved_req = RegisterAgentsRequest(
+            slots=await _resolve_auto_slots(
+                agent_count=job.spec.agent_count,
+                target_peer_ids=req.target_peer_ids,
+            ),
+            routing_mode="auto",
+            target_peer_ids=req.target_peer_ids,
+        )
     try:
-        job = await job_store.register_agents(job_id, req)
+        job = await job_store.register_agents(
+            job_id,
+            resolved_req,
+            workspace_id=principal.workspace_id,
+            routing_mode=routing_mode,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if job is None:
@@ -373,35 +495,49 @@ async def register_job_agents(job_id: str, req: RegisterAgentsRequest) -> Regist
     started = round_engine.start_job(job)
     if not started:
         await round_engine._run_job(job.job_id)
-    return RegisterAgentsResponse(ok=True, registered_slots=sorted(req.slots.keys()))
+    return RegisterAgentsResponse(ok=True, registered_slots=sorted(resolved_req.slots.keys()))
 
 
 @app.get("/jobs/{job_id}", response_model=JobPublicView)
-async def get_job(job_id: str) -> JobPublicView:
-    view = await job_store.public_view(job_id)
+async def get_job(job_id: str, request: Request) -> JobPublicView:
+    principal = require_workspace_http(request)
+    view = await job_store.public_view(job_id, workspace_id=principal.workspace_id)
     if view is None:
         raise HTTPException(status_code=404, detail="job not found")
     return view
 
 
 @app.get("/jobs/{job_id}/operator", response_model=OperatorView)
-async def get_job_operator(job_id: str, x_operator_token: str | None = Header(default=None)) -> OperatorView:
+async def get_job_operator(
+    job_id: str,
+    request: Request,
+    x_operator_token: str | None = Header(default=None),
+) -> OperatorView:
+    principal = require_workspace_http(request)
     _require_operator_token(x_operator_token)
-    view = await job_store.operator_view(job_id)
+    view = await job_store.operator_view(job_id, workspace_id=principal.workspace_id)
     if view is None:
         raise HTTPException(status_code=404, detail="job not found")
     return view
 
 
 @app.get("/jobs/{job_id}/responses")
-async def get_job_responses(job_id: str) -> dict:
+async def get_job_responses(job_id: str, request: Request) -> dict:
     """Return all buffered job_response payloads for a job (for reconnect recovery)."""
+    principal = require_workspace_http(request)
+    job = await job_store.get_job(job_id, workspace_id=principal.workspace_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
     return {"job_id": job_id, "responses": _job_response_buffer.get(job_id, [])}
 
 
 @app.get("/jobs/{job_id}/response-summary")
-async def get_job_response_summary(job_id: str) -> dict:
+async def get_job_response_summary(job_id: str, request: Request) -> dict:
     """Count buffered `job_response` rows - use to verify multiple workers per peer (`instance_id`)."""
+    principal = require_workspace_http(request)
+    job = await job_store.get_job(job_id, workspace_id=principal.workspace_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
     buf = _job_response_buffer.get(job_id, [])
     by_peer: dict[str, int] = {}
     by_slot: dict[str, int] = {}
@@ -421,6 +557,18 @@ async def get_job_response_summary(job_id: str) -> dict:
 
 @app.websocket("/ws/jobs/{job_id}")
 async def ws_job_events(websocket: WebSocket, job_id: str) -> None:
+    try:
+        principal = require_workspace_websocket(websocket)
+    except HTTPException as exc:
+        code = 4401 if exc.status_code == 401 else 4403
+        await _close_job_ws(websocket, code, str(exc.detail))
+        return
+
+    job = await job_store.get_job(job_id, workspace_id=principal.workspace_id)
+    if job is None:
+        await _close_job_ws(websocket, 4404, "job_not_found")
+        return
+
     await websocket.accept()
     queue, history = await job_store.subscribe(job_id)
     try:

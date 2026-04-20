@@ -61,6 +61,8 @@ def compute_settlement(job: JobRecord, w_c: float = 1.0, w_f: float = 0.5) -> di
     return {
         "total_pool": pool,
         "eligible_agents": n,
+        "shadow_credits": int(job.spec.agent_count * job.spec.rounds),
+        "shadow_credit_formula": "agent_count * rounds",
         "floor_each": floor_each,
         "extra_pool": extra_pool,
         "impact_weights": impacts,

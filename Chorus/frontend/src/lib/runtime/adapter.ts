@@ -48,7 +48,7 @@ function cleanPredictionText(text: string): string {
     .trim()
 
   // Strip chatbot/meta openers
-  s = s.replace(CHATBOT_OPENER, '').replace(/^[:\--,. ]+/, '').trim()
+  s = s.replace(CHATBOT_OPENER, '').replace(/^[:\-., ]+/, '').trim()
   if (s.length > 0) s = s.charAt(0).toUpperCase() + s.slice(1)
 
   // Extract first complete sentence

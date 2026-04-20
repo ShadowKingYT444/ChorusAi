@@ -23,8 +23,10 @@ next-env.d.ts
 Thumbs.db
 
 # Project
+.swarm/
 .swarm-state.json
 bin/
 .claude/
+chorus.db
 Chorus/output/
 orchestrator_ed25519.key

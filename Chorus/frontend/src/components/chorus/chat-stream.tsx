@@ -45,6 +45,10 @@ function hashColor(peerId: string) {
   return AGENT_COLORS[h % AGENT_COLORS.length]
 }
 
+function reviewerLabel(index: number) {
+  return `Reviewer ${String.fromCharCode(65 + (index % 26))}`
+}
+
 function getRoundStates(turn: ChatTurn): ChorusRoundState[] {
   if (turn.roundStates?.length) {
     return [...turn.roundStates]
@@ -142,7 +146,6 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
 
   return (
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="w-full">
-      {/* Status header */}
       <div className="flex items-center gap-2 mb-2 text-white/55">
         <span
           className="w-5 h-5 rounded-md grid place-items-center"
@@ -154,10 +157,10 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
           <Cpu className="w-3 h-3 text-white/85" />
         </span>
         <span className="font-mono text-[10.5px] tracking-[0.08em] uppercase">
-          Chorus · {replied}/{total} replied
+          Swarm review · {replied}/{total} checked in
         </span>
         <span className="font-mono text-[10px] text-white/40 tracking-[0.08em] uppercase">
-          Round {currentRound}/{totalRounds}
+          Pass {currentRound}/{totalRounds}
         </span>
         {replied < total && (
           <motion.span
@@ -184,7 +187,6 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
         />
       </div>
 
-      {/* Voice cards */}
       <div className="flex flex-col gap-3">
         {roundStates.map((roundState) => {
           const roundReplied = roundState.responses.filter(
@@ -204,10 +206,10 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <span className="font-mono text-[10px] text-white/60 tracking-[0.12em] uppercase">
-                  Round {roundState.round}
+                  Pass {roundState.round}
                 </span>
                 <span className="font-mono text-[10px] text-white/40 tracking-[0.08em] uppercase">
-                  {roundReplied}/{total} replied
+                  {roundReplied}/{total} checked in
                 </span>
               </div>
 
@@ -217,6 +219,7 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
                     <VoiceCard
                       key={`${roundState.round}-${response.peerId}-${index}`}
                       response={response}
+                      index={index}
                     />
                   ))}
                   {Array.from({ length: pendingCount }).map((_, index) => (
@@ -236,7 +239,7 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
                         transition={{ duration: 1.2, repeat: Infinity, delay: index * 0.12 }}
                       />
                       <span className="font-mono text-[10.5px] text-white/35 tracking-[0.08em] uppercase">
-                        awaiting voice…
+                        awaiting reviewer…
                       </span>
                     </motion.div>
                   ))}
@@ -247,7 +250,6 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
         })}
       </div>
 
-      {/* Consensus */}
       {turn.consensus && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -263,7 +265,7 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
         >
           <div className="flex items-center gap-2 mb-1.5">
             <span className="font-mono text-[10px] text-white/70 tracking-[0.12em] uppercase">
-              Consensus
+              Draft verdict
             </span>
           </div>
           <p className="font-sans text-[14px] text-white/95 leading-relaxed whitespace-pre-wrap">
@@ -275,7 +277,7 @@ function ChorusTurn({ turn }: { turn: ChatTurn }) {
   )
 }
 
-function VoiceCard({ response }: { response: AgentResponse }) {
+function VoiceCard({ response, index }: { response: AgentResponse; index: number }) {
   const color = hashColor(response.peerId)
   const shortId = response.peerId.slice(0, 10)
 
@@ -295,7 +297,7 @@ function VoiceCard({ response }: { response: AgentResponse }) {
           className="w-1.5 h-1.5 rounded-full"
           style={{ background: color, boxShadow: `0 0 8px ${color}` }}
         />
-        <span className="font-mono text-[10.5px] text-white/80 tabular-nums">{shortId}</span>
+        <span className="font-mono text-[10.5px] text-white/80 tabular-nums">{reviewerLabel(index)}</span>
         <span className="font-mono text-[9.5px] text-white/35">· {response.model}</span>
         {response.latencyMs != null && (
           <span className="ml-auto font-mono text-[9.5px] text-white/45 tabular-nums">
@@ -303,9 +305,10 @@ function VoiceCard({ response }: { response: AgentResponse }) {
           </span>
         )}
       </div>
+      <div className="mb-1 font-mono text-[9px] text-white/28">{shortId}</div>
       <p className="font-sans text-[13px] text-white/85 leading-relaxed whitespace-pre-wrap">
         {response.text || (
-          <span className="text-white/45 italic">thinking…</span>
+          <span className="text-white/45 italic">reviewing…</span>
         )}
         {response.status === 'streaming' && (
           <motion.span

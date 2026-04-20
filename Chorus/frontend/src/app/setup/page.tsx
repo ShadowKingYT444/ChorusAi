@@ -26,15 +26,14 @@ import {
   getEffectiveOrchestratorBase,
   getOrchestratorBaseOverride,
   getSavedOllamaIp,
-  isSavedModelVerified,
   normalizeOrchestratorBase,
   saveOllamaIp,
-  setSavedModelVerified,
   setOrchestratorBaseOverride,
   suggestLocalOrchestratorBase,
 } from '@/lib/api/orchestrator'
 import { isLoopbackOllamaHost, isPrivateLanIpv4 } from '@/lib/lan/chat-proxy-allow'
 import { normalizeOpenAIChatCompletionsUrl } from '@/lib/lan/normalize-openai-chat-url'
+import { readWorkspaceId, readWorkspaceToken, writeWorkspaceId, writeWorkspaceToken } from '@/lib/workspace-config'
 
 type PathMode = 'local' | 'tunnel'
 type TunnelProvider = 'ngrok' | 'cloudflared'
@@ -49,10 +48,13 @@ interface ModelChoice {
 }
 
 const MODEL_CHOICES: ModelChoice[] = [
-  { id: 'qwen2.5:0.5b', label: 'Fast', size: '0.5B', description: 'Smallest, runs on almost anything.' },
-  { id: 'llama3.2:3b', label: 'Balanced', size: '3B', description: 'Solid replies on a modern laptop.' },
-  { id: 'qwen2.5:7b', label: 'Quality', size: '7B', description: 'Needs ~8 GB RAM / decent GPU.' },
+  { id: 'qwen2.5:0.5b', label: 'Fast triage', size: '0.5B', description: 'Lightweight reviewer for quick reads and low-power machines.' },
+  { id: 'llama3.2:3b', label: 'Balanced', size: '3B', description: 'Good default for day-to-day RFC and launch reviews.' },
+  { id: 'qwen2.5:7b', label: 'Deep review', size: '7B', description: 'Best quality if you have the RAM or GPU headroom.' },
 ]
+
+const TRAY_WARNING =
+  "Don't rely on the system-tray Ollama for env vars. Start `ollama serve` in a terminal so you can verify the boot log contains the values you set."
 
 function isDeployedHost(): boolean {
   if (typeof window === 'undefined') return false
@@ -67,7 +69,8 @@ function readLocalStorage(key: string): string {
 
 function writeLocalStorage(key: string, value: string): void {
   if (typeof window === 'undefined') return
-  if (value.trim()) localStorage.setItem(key, value.trim())
+  const trimmed = value.trim()
+  if (trimmed) localStorage.setItem(key, trimmed)
   else localStorage.removeItem(key)
 }
 
@@ -94,8 +97,7 @@ export default function SetupPage() {
   const [os, setOs] = useState<OsKey>('macos')
   const [stepIndex, setStepIndex] = useState(0)
   const [direction, setDirection] = useState<1 | -1>(1)
-
-  const [model, setModel] = useState<string>(MODEL_CHOICES[0].id)
+  const [model, setModel] = useState(MODEL_CHOICES[1].id)
   const [lanIp, setLanIp] = useState('')
   const [tunnelProvider, setTunnelProvider] = useState<TunnelProvider>('ngrok')
   const [tunnelUrl, setTunnelUrl] = useState('')
@@ -105,50 +107,58 @@ export default function SetupPage() {
   const [origin, setOrigin] = useState('https://chorus.vercel.app')
   const [probePhase, setProbePhase] = useState<'idle' | 'probing' | 'ok' | 'error'>('idle')
   const [probeMessage, setProbeMessage] = useState('')
+  const [workspaceId, setWorkspaceId] = useState('')
+  const [workspaceToken, setWorkspaceToken] = useState('')
 
-  // Hydrate from environment on mount.
   useEffect(() => {
     setOs(detectOs())
     setMode(isDeployedHost() ? 'tunnel' : 'local')
     if (typeof window !== 'undefined') {
       setOrigin(window.location.origin)
     }
+
     const savedModel = readLocalStorage(MODEL_NAME_KEY)
     if (savedModel) setModel(savedModel)
+
     const savedTunnelDraft = readLocalStorage(SETUP_TUNNEL_URL_KEY)
     const savedPublicModelUrl = readLocalStorage(MODEL_PUBLIC_URL_KEY)
     const savedTunnel =
       savedTunnelDraft || (savedPublicModelUrl && !isLocalModelBase(savedPublicModelUrl) ? savedPublicModelUrl : '')
     if (savedTunnel) setTunnelUrl(savedTunnel)
+
     const savedIp = getSavedOllamaIp()
     if (savedIp) setLanIp(savedIp)
+
     const override = getOrchestratorBaseOverride()
     const envBase = process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() ?? ''
     const existingOrchestrator =
       override ?? getEffectiveOrchestratorBase() ?? suggestLocalOrchestratorBase() ?? ''
     setOrchestratorBase(existingOrchestrator)
-    // Track whether the value came from a baked-in env var (no override yet).
     setOrchestratorBaseFromEnv(!override && envBase.length > 0)
+    setWorkspaceId(readWorkspaceId())
+    setWorkspaceToken(readWorkspaceToken())
   }, [])
 
-  // Persist model name whenever it changes.
   useEffect(() => {
     writeLocalStorage(MODEL_NAME_KEY, model)
   }, [model])
 
-  // Persist tunnel URL whenever it changes.
   useEffect(() => {
     writeLocalStorage(SETUP_TUNNEL_URL_KEY, tunnelUrl)
   }, [tunnelUrl])
 
-  // Persist LAN IP whenever it changes.
   useEffect(() => {
     if (lanIp.trim()) saveOllamaIp(lanIp.trim())
   }, [lanIp])
 
-  // Reset test state when key inputs change.
-  // Skip the initial run after hydration so we don't wipe a previously-verified
-  // setup the moment the page loads.
+  useEffect(() => {
+    writeWorkspaceId(workspaceId)
+  }, [workspaceId])
+
+  useEffect(() => {
+    writeWorkspaceToken(workspaceToken)
+  }, [workspaceToken])
+
   const hydratedRef = useRef(false)
   useEffect(() => {
     if (!hydratedRef.current) {
@@ -156,108 +166,95 @@ export default function SetupPage() {
       return
     }
     setTestOk(false)
-    setSavedModelVerified(false)
   }, [mode, lanIp, tunnelUrl, model])
 
-  // Build step list conditional on mode.
   const steps = useMemo(() => {
     const base = [
-      { key: 'path', label: 'Path' },
+      { key: 'path', label: 'Capacity path' },
       { key: 'install', label: 'Install Ollama' },
-      { key: 'model', label: 'Pull a model' },
-      { key: 'network', label: 'Enable network' },
+      { key: 'model', label: 'Choose model' },
+      { key: 'network', label: 'Allow access' },
     ]
-    if (mode === 'tunnel') base.push({ key: 'tunnel', label: 'Expose tunnel' })
-    base.push({ key: 'test', label: 'Test setup' })
-    base.push({ key: 'connect', label: 'Connect to Chorus' })
+    if (mode === 'tunnel') base.push({ key: 'tunnel', label: 'Expose endpoint' })
+    base.push({ key: 'test', label: 'Test capacity' })
+    base.push({ key: 'connect', label: 'Connect workspace' })
     return base
   }, [mode])
 
   const totalSteps = steps.length
   const clampedIndex = Math.min(stepIndex, totalSteps - 1)
   const currentKey = steps[clampedIndex].key
+  const progress = ((clampedIndex + 1) / totalSteps) * 100
+
+  const nextDisabled = currentKey === 'test' ? !testOk : false
 
   const goNext = useCallback(() => {
     setDirection(1)
-    setStepIndex((i) => Math.min(i + 1, totalSteps - 1))
+    setStepIndex((current) => Math.min(current + 1, totalSteps - 1))
   }, [totalSteps])
 
   const goBack = useCallback(() => {
     setDirection(-1)
-    setStepIndex((i) => Math.max(i - 1, 0))
+    setStepIndex((current) => Math.max(current - 1, 0))
   }, [])
 
-  // Gate "Next" where user input is required.
-  const nextDisabled = useMemo(() => {
-    if (currentKey === 'test') return !testOk
-    return false
-  }, [currentKey, testOk])
-
   const onConnectOrchestrator = useCallback(() => {
-    const v = orchestratorBase.trim()
-    const normalized = v ? normalizeOrchestratorBase(v) : null
+    const trimmed = orchestratorBase.trim()
+    const normalized = trimmed ? normalizeOrchestratorBase(trimmed) : null
     setOrchestratorBaseOverride(normalized)
-    if (normalized && normalized !== orchestratorBase) {
-      setOrchestratorBase(normalized)
-    }
+    if (normalized) setOrchestratorBase(normalized)
     writeLocalStorage(MODEL_PUBLIC_URL_KEY, deriveModelPublicUrl(mode, lanIp, tunnelUrl))
   }, [lanIp, mode, orchestratorBase, tunnelUrl])
 
-  // Reset probe state when the URL changes.
   useEffect(() => {
     setProbePhase('idle')
     setProbeMessage('')
   }, [orchestratorBase])
 
   const probeOrchestrator = useCallback(async (): Promise<boolean> => {
-    const v = orchestratorBase.trim()
-    if (!v) {
+    const trimmed = orchestratorBase.trim()
+    if (!trimmed) {
       setProbePhase('error')
-      setProbeMessage(
-        'No orchestrator URL set. Paste a Chorus signaling URL above (or set NEXT_PUBLIC_ORCHESTRATOR_BASE_URL on Vercel).',
-      )
+      setProbeMessage('No control plane URL set. Paste the Railway or private deployment URL first.')
       return false
     }
+
     setProbePhase('probing')
     setProbeMessage('')
-    const base = normalizeOrchestratorBase(v)
+
+    const base = normalizeOrchestratorBase(trimmed)
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8000)
+
     try {
       const res = await fetch(`${base}/health`, {
         method: 'GET',
         signal: controller.signal,
         headers: { Accept: 'application/json' },
       })
+
       if (!res.ok) {
         setProbePhase('error')
         if (res.status === 404) {
           setProbeMessage(
-            `Health check returned 404. The URL is reachable but ${base}/health doesn't exist on it. Most common cause: you pasted the Vercel frontend URL by mistake. The orchestrator URL is the Railway one (e.g. https://your-app.up.railway.app), NOT the Vercel one. Open ${base}/health directly in a browser tab - if you don't see {"status":"ok"}, this isn't a Chorus orchestrator.`,
-          )
-        } else if (res.status === 503) {
-          setProbeMessage(
-            `Health check returned 503. The orchestrator is up but reports unavailable. Check the Railway deploy logs.`,
+            `Health check returned 404. ${base}/health is missing. Most often this means the frontend URL was pasted instead of the control plane URL.`,
           )
         } else {
-          setProbeMessage(
-            `Health check failed: HTTP ${res.status}. The URL is reachable but the server isn't responding like a Chorus orchestrator.`,
-          )
+          setProbeMessage(`Health check failed with HTTP ${res.status}.`)
         }
         return false
       }
+
       setProbePhase('ok')
-      setProbeMessage('Orchestrator reachable.')
+      setProbeMessage('Control plane reachable.')
       return true
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setProbePhase('error')
       if (/abort/i.test(msg)) {
-        setProbeMessage(`Health check timed out after 8s. Confirm ${base} is online and CORS allows ${origin}.`)
+        setProbeMessage(`Health check timed out after 8s. Confirm ${base} is online and reachable from ${origin}.`)
       } else if (/cors|network|failed to fetch/i.test(msg)) {
-        setProbeMessage(
-          `Browser blocked the request. Most likely the orchestrator's CORS allowlist is missing this origin. On the orchestrator host (e.g. Railway), set ORC_CORS_ORIGINS=${origin} and redeploy.`,
-        )
+        setProbeMessage(`Browser request failed. Check CORS on the control plane and confirm ${origin} is allowed.`)
       } else {
         setProbeMessage(`Could not reach ${base}/health: ${msg}`)
       }
@@ -278,11 +275,11 @@ export default function SetupPage() {
   const installCommands: Record<OsKey, { code: string; note?: string }> = {
     macos: {
       code: '# Download the app\nopen https://ollama.com/download/Ollama.dmg\n\n# Or via Homebrew\nbrew install --cask ollama',
-      note: 'After installing, launch Ollama once so the tray icon shows up.',
+      note: 'Launch Ollama once after install so the service is ready.',
     },
     windows: {
       code: '# Download the installer, then run it\nstart https://ollama.com/download/OllamaSetup.exe',
-      note: 'After installing, launch Ollama - you should see the llama icon in your system tray.',
+      note: 'Launch Ollama once after install so the service is ready.',
     },
     linux: {
       code: 'curl -fsSL https://ollama.com/install.sh | sh',
@@ -290,16 +287,13 @@ export default function SetupPage() {
     },
   }
 
-  const TRAY_WARNING =
-    "Don't rely on the system-tray Ollama for env vars - on Windows and macOS the tray app frequently keeps stale environment values from the user's login session. Use `ollama serve` in a terminal instead. The terminal will show OLLAMA_ORIGINS in its boot log so you can confirm the value is live."
-
   const networkCommandsLan: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: '# Quit any tray Ollama first (menu bar → Quit), then in Terminal:\nOLLAMA_HOST=0.0.0.0 ollama serve\n# Leave this terminal open - Ollama runs here. Boot log should show:\n#   "OLLAMA_HOST: 0.0.0.0"',
+      code: '# Quit the tray app, then in Terminal:\nOLLAMA_HOST=0.0.0.0 ollama serve',
       note: TRAY_WARNING,
     },
     windows: {
-      code: '# In PowerShell. Kill ALL Ollama processes (tray + runners), then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve\n# Leave this PowerShell window open - Ollama runs here.\n# Boot log should show: "OLLAMA_HOST: 0.0.0.0"',
+      code: '$env:OLLAMA_HOST = "0.0.0.0"\nollama serve',
       note: TRAY_WARNING,
     },
     linux: {
@@ -310,11 +304,11 @@ export default function SetupPage() {
 
   const networkCommandsTunnel: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: `# Terminal #1 - Ollama. Quit tray app first (menu bar → Quit).\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve\n# Keep this terminal open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
+      code: `# Terminal #1\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve`,
       note: TRAY_WARNING,
     },
     windows: {
-      code: `# PowerShell #1 - Ollama. Kill tray + runners, then restart:\ntaskkill /F /IM ollama.exe 2>$null; Start-Sleep 2\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve\n# Keep this window open. Boot log must show:\n#   OLLAMA_ORIGINS:[${origin} ...]`,
+      code: `$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve`,
       note: TRAY_WARNING,
     },
     linux: {
@@ -327,50 +321,17 @@ export default function SetupPage() {
       <StepShell
         icon={<Laptop size={18} />}
         eyebrow={`Step 1 of ${totalSteps}`}
-        title="Pick your path"
-        subtitle="Choose how Chorus connects to your Ollama instance. Use the local path if Ollama is on the same machine or LAN. Use a tunnel if you need remote access."
+        title="Choose your capacity path"
+        subtitle="Decide how Chorus will reach the reviewer endpoint behind Ollama."
       >
         {isDeployedHost() ? (
-          <div
-            style={{
-              padding: '0.8rem 0.95rem',
-              borderRadius: 6,
-              border: '1px solid rgba(255,200,120,0.3)',
-              background: 'rgba(60,45,20,0.35)',
-              fontSize: 12.5,
-              color: 'rgba(255,230,180,0.88)',
-              lineHeight: 1.6,
-              marginBottom: '0.85rem',
-            }}
-          >
-            <div style={{ fontWeight: 600, color: 'rgba(255,240,200,0.95)', marginBottom: 6 }}>
-              You are on a hosted Chorus instance
-            </div>
-            <div>
-              Since this site runs on a remote server, it cannot reach <code>127.0.0.1</code> or <code>192.168.x.x</code> on your computer.
-              You need a <strong>tunnel</strong> (ngrok or cloudflared) to give your local Ollama a public URL.
-            </div>
-          </div>
+          <Notice kind="warn" title="Hosted workspace detected">
+            This app is running remotely, so it cannot reach <code>127.0.0.1</code> on your laptop. Use a tunnel to expose a public reviewer endpoint.
+          </Notice>
         ) : (
-          <div
-            style={{
-              padding: '0.8rem 0.95rem',
-              borderRadius: 6,
-              border: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(255,255,255,0.025)',
-              fontSize: 12.5,
-              color: 'rgba(255,255,255,0.72)',
-              lineHeight: 1.6,
-              marginBottom: '0.85rem',
-            }}
-          >
-            <div style={{ fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginBottom: 6 }}>
-              Quickest setup
-            </div>
-            <div>1. Run Ollama on the same machine as your browser.</div>
-            <div>2. In the test step, enter <code>127.0.0.1</code>.</div>
-            <div>3. You do not need ngrok for that path.</div>
-          </div>
+          <Notice kind="info" title="Fastest path">
+            If Chorus and Ollama are on the same machine, use the local path and test with <code>127.0.0.1</code>.
+          </Notice>
         )}
         <div style={{ display: 'grid', gap: '0.7rem' }}>
           {!isDeployedHost() && (
@@ -379,17 +340,16 @@ export default function SetupPage() {
               onClick={() => setMode('local')}
               icon={<Home size={16} />}
               title="Same machine or LAN"
-              description="Ollama is on this machine (use 127.0.0.1) or another device on your local network (use its 192.168.x.x address)."
-              hint="Default - detected localhost."
+              description="Use localhost or a LAN IP when the reviewer endpoint is reachable inside your local network."
             />
           )}
           <PathCard
             selected={mode === 'tunnel' || isDeployedHost()}
             onClick={() => setMode('tunnel')}
             icon={<Cloud size={16} />}
-            title="Remote access via tunnel"
-            description="Expose your local Ollama to the internet with ngrok or cloudflared so Chorus can reach it from anywhere."
-            hint={isDeployedHost() ? 'Required - you are on a hosted instance.' : undefined}
+            title="Tunnel for hosted access"
+            description="Expose the reviewer endpoint with ngrok or cloudflared when Chorus is hosted elsewhere."
+            hint={isDeployedHost() ? 'Required for hosted workspaces.' : undefined}
           />
         </div>
       </StepShell>
@@ -400,7 +360,7 @@ export default function SetupPage() {
         icon={<Download size={18} />}
         eyebrow={`Step 2 of ${totalSteps}`}
         title="Install Ollama"
-        subtitle="Ollama runs the LLM locally and speaks the OpenAI chat-completions API."
+        subtitle="Ollama powers the private review endpoint and exposes an OpenAI-compatible chat-completions API."
       >
         <OsTabs
           value={os}
@@ -411,24 +371,6 @@ export default function SetupPage() {
             linux: { code: installCommands.linux.code, note: installCommands.linux.note, label: 'Linux' },
           }}
         />
-        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
-          Already installed?{' '}
-          <button
-            type="button"
-            onClick={goNext}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(160,200,255,0.95)',
-              cursor: 'pointer',
-              fontSize: 12,
-              textDecoration: 'underline',
-              padding: 0,
-            }}
-          >
-            Skip →
-          </button>
-        </p>
       </StepShell>
     ),
 
@@ -436,74 +378,43 @@ export default function SetupPage() {
       <StepShell
         icon={<Package size={18} />}
         eyebrow={`Step 3 of ${totalSteps}`}
-        title="Pull a model"
-        subtitle="Pick a size based on your machine. You can swap later."
+        title="Choose a review model"
+        subtitle="Pick a size that matches your machine and the depth of reviews you want to run."
       >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
-          {MODEL_CHOICES.map((m) => {
-            const active = m.id === model
+        <div style={{ display: 'grid', gap: '0.55rem' }}>
+          {MODEL_CHOICES.map((choice) => {
+            const active = choice.id === model
             return (
               <button
-                key={m.id}
+                key={choice.id}
                 type="button"
-                onClick={() => setModel(m.id)}
+                onClick={() => setModel(choice.id)}
                 style={{
-                  flex: '1 1 10rem',
                   textAlign: 'left',
-                  padding: '0.7rem 0.85rem',
+                  padding: '0.8rem 0.9rem',
                   borderRadius: 6,
-                  border: active
-                    ? '1px solid rgba(180,200,255,0.5)'
-                    : '1px solid rgba(255,255,255,0.08)',
+                  border: active ? '1px solid rgba(180,200,255,0.45)' : '1px solid rgba(255,255,255,0.08)',
                   background: active ? 'rgba(180,200,255,0.08)' : 'rgba(255,255,255,0.025)',
                   color: 'rgba(255,255,255,0.9)',
-                  cursor: 'pointer',
-                  transition: 'all 140ms ease',
                 }}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginBottom: 4,
-                  }}
-                >
-                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{m.label}</span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-geist-mono), monospace',
-                      fontSize: 10,
-                      color: 'rgba(255,255,255,0.45)',
-                      background: 'rgba(255,255,255,0.05)',
-                      padding: '1px 6px',
-                      borderRadius: 3,
-                    }}
-                  >
-                    {m.size}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{choice.label}</span>
+                  <span style={{ fontFamily: 'var(--font-geist-mono), monospace', fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
+                    {choice.size}
                   </span>
                 </div>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-geist-mono), monospace',
-                    fontSize: 11,
-                    color: active ? 'rgba(200,220,255,0.92)' : 'rgba(255,255,255,0.6)',
-                    marginBottom: 4,
-                  }}
-                >
-                  {m.id}
+                <div style={{ fontFamily: 'var(--font-geist-mono), monospace', fontSize: 11, color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>
+                  {choice.id}
                 </div>
-                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>
-                  {m.description}
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.52)', lineHeight: 1.45 }}>
+                  {choice.description}
                 </div>
               </button>
             )
           })}
         </div>
         <CodeBlock code={`ollama pull ${model}`} label="shell" />
-        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>
-          This downloads the weights. First pull can take a few minutes - subsequent runs are instant.
-        </p>
       </StepShell>
     ),
 
@@ -511,87 +422,22 @@ export default function SetupPage() {
       <StepShell
         icon={<Network size={18} />}
         eyebrow={`Step 4 of ${totalSteps}`}
-        title={mode === 'local' ? 'Enable LAN access' : 'Allow the deployed site'}
+        title={mode === 'local' ? 'Allow local workspace access' : 'Allow the hosted workspace'}
         subtitle={
           mode === 'local'
-            ? 'Only do this if Ollama is on a different machine from Chorus. If Ollama and Chorus are on the same computer, you can skip straight to the test step and use 127.0.0.1.'
-            : `Ollama blocks unknown origins by default. Whitelist ${origin} so the browser request is accepted through the tunnel.`
+            ? 'Only do this when Ollama runs on another machine on your LAN.'
+            : `Whitelist ${origin} so the browser can reach the tunneled endpoint.`
         }
       >
-        {mode === 'local' && (
-          <div
-            style={{
-              padding: '0.7rem 0.85rem',
-              borderRadius: 5,
-              border: '1px solid rgba(180,200,255,0.22)',
-              background: 'rgba(30,40,70,0.26)',
-              fontSize: 12.5,
-              color: 'rgba(220,230,255,0.88)',
-              lineHeight: 1.55,
-              marginBottom: '0.8rem',
-            }}
-          >
-            Plain English: if Ollama is on the <strong>same PC</strong> as Chorus, leave it local and test with{' '}
-            <code>127.0.0.1</code>. If Ollama is on a <strong>different PC</strong>, then you must expose it on your LAN with{' '}
-            <code>OLLAMA_HOST=0.0.0.0</code>.
-          </div>
-        )}
-        {mode === 'tunnel' && (
-          <div
-            style={{
-              padding: '0.7rem 0.85rem',
-              borderRadius: 5,
-              border: '1px solid rgba(180,200,255,0.25)',
-              background: 'rgba(30,40,70,0.3)',
-              fontSize: 12.5,
-              color: 'rgba(220,230,255,0.9)',
-              lineHeight: 1.5,
-              marginBottom: '0.75rem',
-            }}
-          >
-            <div style={{ fontWeight: 600, color: 'rgba(230,240,255,0.98)', marginBottom: 4 }}>
-              Your live Chorus origin (goes into OLLAMA_ORIGINS)
-            </div>
-            <div
-              style={{
-                fontFamily: 'var(--font-geist-mono), monospace',
-                fontSize: 13,
-                color: 'rgba(200,220,255,0.95)',
-                background: 'rgba(0,0,0,0.35)',
-                padding: '0.35rem 0.55rem',
-                borderRadius: 3,
-                wordBreak: 'break-all',
-              }}
-            >
-              {origin}
-            </div>
-            <div style={{ fontSize: 11.5, marginTop: 6, color: 'rgba(220,230,255,0.7)' }}>
-              The code block below already has this value baked in. Do NOT leave any{' '}
-              <code>YOUR-CHORUS-URL</code> placeholder in the command.
-            </div>
-          </div>
-        )}
         <OsTabs
           value={os}
           onChange={setOs}
-          commands={mode === 'local' ? networkCommandsLan : networkCommandsTunnel}
-        />
-        <div
-          style={{
-            padding: '0.7rem 0.85rem',
-            borderRadius: 5,
-            border: '1px solid rgba(255,210,160,0.2)',
-            background: 'rgba(60,45,30,0.3)',
-            fontSize: 12.5,
-            color: 'rgba(255,220,180,0.85)',
-            lineHeight: 1.5,
+          commands={{
+            macos: { code: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).macos.code, note: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).macos.note, label: 'macOS' },
+            windows: { code: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).windows.code, note: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).windows.note, label: 'Windows' },
+            linux: { code: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).linux.code, note: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).linux.note, label: 'Linux' },
           }}
-        >
-          <strong style={{ color: 'rgba(255,230,200,0.95)' }}>Confirm the boot log:</strong> after{' '}
-          <code>ollama serve</code> starts, check the <code>OLLAMA_ORIGINS</code> list in the boot
-          log contains the URL above. If it shows <code>YOUR-CHORUS-URL</code> or any other
-          placeholder, stop Ollama, fix the env var, and restart.
-        </div>
+        />
       </StepShell>
     ),
 
@@ -599,140 +445,48 @@ export default function SetupPage() {
       <StepShell
         icon={<Globe2 size={18} />}
         eyebrow={`Step 5 of ${totalSteps}`}
-        title="Expose Ollama to the internet"
-        subtitle="Open a SECOND terminal (leave the Ollama one running). Run ngrok there to give Ollama a public https URL."
+        title="Expose a secure review endpoint"
+        subtitle="Open a second terminal, leave Ollama running, and create a public https URL that Chorus can reach."
       >
-        <div
-          style={{
-            padding: '0.75rem 0.9rem',
-            borderRadius: 5,
-            border: '1px solid rgba(255,210,160,0.25)',
-            background: 'rgba(60,45,30,0.32)',
-            fontSize: 12.5,
-            color: 'rgba(255,220,180,0.88)',
-            lineHeight: 1.55,
-            marginBottom: '0.8rem',
-          }}
-        >
-          <div style={{ fontWeight: 600, color: 'rgba(255,235,200,0.96)', marginBottom: 4 }}>
-            Two terminals - don&apos;t close the first one
-          </div>
-          <div>
-            Terminal #1 keeps running <code>ollama serve</code> from the previous step. Open a brand
-            new terminal window for ngrok. Ollama and ngrok both need to stay running for Chorus to
-            reach you.
-          </div>
-        </div>
-        <div
-          role="tablist"
-          aria-label="Tunnel provider"
-          style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}
-        >
-          {(['ngrok', 'cloudflared'] as TunnelProvider[]).map((p) => {
-            const active = p === tunnelProvider
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          {(['ngrok', 'cloudflared'] as TunnelProvider[]).map((provider) => {
+            const active = provider === tunnelProvider
             return (
               <button
-                key={p}
+                key={provider}
                 type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setTunnelProvider(p)}
+                onClick={() => setTunnelProvider(provider)}
                 style={{
                   padding: '0.4rem 0.85rem',
                   borderRadius: 4,
-                  border: active
-                    ? '1px solid rgba(255,255,255,0.22)'
-                    : '1px solid rgba(255,255,255,0.08)',
+                  border: active ? '1px solid rgba(255,255,255,0.22)' : '1px solid rgba(255,255,255,0.08)',
                   background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
                   color: active ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)',
                   fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  letterSpacing: '0.04em',
                 }}
               >
-                {p}
+                {provider}
               </button>
             )
           })}
         </div>
-        {tunnelProvider === 'ngrok' ? (
-          <>
-            <CodeBlock code="ngrok http 11434 --host-header=localhost:11434" label="shell" />
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-              Don&apos;t have ngrok?{' '}
-              <a
-                href="https://ngrok.com/download"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'rgba(160,200,255,0.95)' }}
-              >
-                Install it →
-              </a>{' '}
-              The <code>--host-header=localhost:11434</code> flag is required - it rewrites the
-              Host header so Ollama&apos;s DNS-rebinding protection accepts the request. Without it
-              you will get <code>403 Forbidden</code> even with a correct <code>OLLAMA_ORIGINS</code>.
-              Look for the <code>Forwarding</code> line - the https URL ends in{' '}
-              <code>.ngrok-free.dev</code> or <code>.ngrok-free.app</code> (varies by ngrok
-              version). Copy that full https URL into the field below. Do NOT include a path.
-            </p>
-          </>
-        ) : (
-          <>
-            <CodeBlock code="cloudflared tunnel --url http://localhost:11434" label="shell" />
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-              Don&apos;t have cloudflared?{' '}
-              <a
-                href="https://developers.cloudflare.com/cloudflared/"
-                target="_blank"
-                rel="noreferrer"
-                style={{ color: 'rgba(160,200,255,0.95)' }}
-              >
-                Install it →
-              </a>{' '}
-              Look for a line like{' '}
-              <span style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>
-                https://random-words.trycloudflare.com
-              </span>
-              . Copy that https URL into the field below.
-            </p>
-          </>
-        )}
-
-        <label
-          style={{
-            display: 'block',
-            fontSize: 11.5,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.5)',
-            marginTop: '0.25rem',
-          }}
-        >
-          Paste the https URL it gave you
-        </label>
+        <CodeBlock
+          code={
+            tunnelProvider === 'ngrok'
+              ? 'ngrok http 11434 --host-header=localhost:11434'
+              : 'cloudflared tunnel --url http://localhost:11434'
+          }
+          label="shell"
+        />
+        <label style={fieldLabelStyle}>Tunnel URL</label>
         <input
-          type="url"
-          inputMode="url"
           value={tunnelUrl}
           onChange={(e) => setTunnelUrl(e.target.value)}
           placeholder="https://abc-123.ngrok-free.app"
           autoComplete="off"
           spellCheck={false}
-          style={{
-            width: '100%',
-            padding: '0.6rem 0.75rem',
-            borderRadius: 4,
-            border: '1px solid rgba(255,255,255,0.14)',
-            background: 'rgba(0,0,0,0.35)',
-            color: '#fff',
-            fontSize: 13.5,
-            fontFamily: 'var(--font-geist-mono), monospace',
-          }}
+          style={inputStyle}
         />
-        <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
-          Saved locally in this browser so the main app can reuse it immediately.
-        </p>
       </StepShell>
     ),
 
@@ -740,134 +494,32 @@ export default function SetupPage() {
       <StepShell
         icon={<Plug size={18} />}
         eyebrow={`Step ${mode === 'tunnel' ? 6 : 5} of ${totalSteps}`}
-        title="Test your setup"
-        subtitle={
-          mode === 'local'
-            ? 'Run this before you continue. If Ollama is on this same computer, use 127.0.0.1. If it is on another computer, use its 192.168.x.x address.'
-            : 'Run this before you continue. We will call the public tunnel URL directly from your browser.'
-        }
+        title="Test your capacity"
+        subtitle="Verify the endpoint responds before you open the review workspace."
       >
         {mode === 'local' ? (
           <>
-            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => setLanIp('127.0.0.1')}
-                style={{
-                  padding: '0.45rem 0.75rem',
-                  borderRadius: 4,
-                  border: '1px solid rgba(180,200,255,0.22)',
-                  background: 'rgba(30,40,70,0.32)',
-                  color: 'rgba(220,230,255,0.92)',
-                  fontSize: 12.5,
-                  cursor: 'pointer',
-                }}
-              >
-                Ollama is on this computer
-              </button>
-              <button
-                type="button"
-                onClick={() => setLanIp('')}
-                style={{
-                  padding: '0.45rem 0.75rem',
-                  borderRadius: 4,
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: 'rgba(255,255,255,0.02)',
-                  color: 'rgba(255,255,255,0.72)',
-                  fontSize: 12.5,
-                  cursor: 'pointer',
-                }}
-              >
-                Ollama is on another computer
-              </button>
-            </div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 11.5,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.5)',
-              }}
-            >
-              Ollama address
-            </label>
+            <label style={fieldLabelStyle}>Ollama address</label>
             <input
               value={lanIp}
               onChange={(e) => setLanIp(e.target.value)}
               placeholder="127.0.0.1 or 192.168.1.10"
               autoComplete="off"
               spellCheck={false}
-              style={{
-                width: '100%',
-                padding: '0.6rem 0.75rem',
-                borderRadius: 4,
-                border: '1px solid rgba(255,255,255,0.14)',
-                background: 'rgba(0,0,0,0.35)',
-                color: '#fff',
-                fontSize: 13.5,
-                fontFamily: 'var(--font-geist-mono), monospace',
-              }}
+              style={inputStyle}
             />
-            <div
-              style={{
-                padding: '0.65rem 0.8rem',
-                borderRadius: 5,
-                border: '1px solid rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.025)',
-                fontSize: 12,
-                color: 'rgba(255,255,255,0.62)',
-                lineHeight: 1.55,
-              }}
-            >
-              <div style={{ marginBottom: 4, fontWeight: 600, color: 'rgba(255,255,255,0.82)' }}>
-                Which address should I use?
-              </div>
-              <div style={{ fontSize: 12, lineHeight: 1.55, color: 'rgba(255,255,255,0.68)' }}>
-                Same computer as Chorus: use <code>127.0.0.1</code>.
-              </div>
-              <div style={{ fontSize: 12, lineHeight: 1.55, color: 'rgba(255,255,255,0.68)' }}>
-                Different computer on your Wi-Fi/LAN: use that machine&apos;s <code>192.168.x.x</code> address.
-              </div>
-              <div style={{ fontFamily: 'var(--font-geist-mono), monospace', fontSize: 11.5, marginTop: 6 }}>
-                Windows: <span style={{ color: 'rgba(200,220,255,0.9)' }}>ipconfig</span>
-                {'  ·  '}
-                macOS: <span style={{ color: 'rgba(200,220,255,0.9)' }}>ipconfig getifaddr en0</span>
-                {'  ·  '}
-                Linux: <span style={{ color: 'rgba(200,220,255,0.9)' }}>hostname -I</span>
-              </div>
-            </div>
             <ConnectionTest mode="lan" target={lanIp} model={model} onResult={setTestOk} />
           </>
         ) : (
           <>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 11.5,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.5)',
-              }}
-            >
-              Tunnel URL
-            </label>
+            <label style={fieldLabelStyle}>Tunnel URL</label>
             <input
               value={tunnelUrl}
               onChange={(e) => setTunnelUrl(e.target.value)}
               placeholder="https://abc-123.ngrok-free.app"
               autoComplete="off"
               spellCheck={false}
-              style={{
-                width: '100%',
-                padding: '0.6rem 0.75rem',
-                borderRadius: 4,
-                border: '1px solid rgba(255,255,255,0.14)',
-                background: 'rgba(0,0,0,0.35)',
-                color: '#fff',
-                fontSize: 13.5,
-                fontFamily: 'var(--font-geist-mono), monospace',
-              }}
+              style={inputStyle}
             />
             <ConnectionTest mode="tunnel" target={tunnelUrl} model={model} onResult={setTestOk} />
           </>
@@ -879,46 +531,16 @@ export default function SetupPage() {
       <StepShell
         icon={<Radio size={18} />}
         eyebrow={`Step ${totalSteps} of ${totalSteps}`}
-        title="Connect to the Chorus network"
-        subtitle="Verify the orchestrator is reachable, then open Chorus."
+        title="Connect your workspace"
+        subtitle="Save the control plane URL and optional workspace credentials used by protected deployments."
       >
         {!orchestratorBase.trim() && !orchestratorBaseFromEnv && (
-          <div
-            style={{
-              padding: '0.65rem 0.85rem',
-              borderRadius: 5,
-              border: '1px solid rgba(180,200,255,0.22)',
-              background: 'rgba(30,40,70,0.3)',
-              color: 'rgba(210,225,255,0.9)',
-              fontSize: 12,
-              lineHeight: 1.5,
-              marginBottom: '0.7rem',
-            }}
-          >
-            No orchestrator configured. Deploy a backend to Railway (
-            <a
-              href="https://github.com/ShadowKingYT444/ChorusAi#hosting-the-backend-railway"
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: 'rgba(180,210,255,0.95)' }}
-            >
-              README
-            </a>
-            ) and paste the <code>https://*.up.railway.app</code> URL below.
-          </div>
+          <Notice kind="info" title="No control plane configured">
+            Deploy the backend to Railway or your private environment, then paste the <code>https://*.up.railway.app</code> URL below.
+          </Notice>
         )}
 
-        <label
-          style={{
-            display: 'block',
-            fontSize: 11.5,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.5)',
-          }}
-        >
-          Orchestrator URL
-        </label>
+        <label style={fieldLabelStyle}>Control plane URL</label>
         <input
           value={orchestratorBase}
           onChange={(e) => setOrchestratorBase(e.target.value)}
@@ -926,17 +548,38 @@ export default function SetupPage() {
           placeholder="https://your-app.up.railway.app"
           autoComplete="off"
           spellCheck={false}
-          style={{
-            width: '100%',
-            padding: '0.6rem 0.75rem',
-            borderRadius: 4,
-            border: '1px solid rgba(255,255,255,0.14)',
-            background: 'rgba(0,0,0,0.35)',
-            color: '#fff',
-            fontSize: 13.5,
-            fontFamily: 'var(--font-geist-mono), monospace',
-          }}
+          style={inputStyle}
         />
+
+        <div style={{ display: 'grid', gap: '0.6rem', gridTemplateColumns: '1fr 1fr' }}>
+          <div>
+            <label style={fieldLabelStyle}>Workspace id</label>
+            <input
+              value={workspaceId}
+              onChange={(e) => setWorkspaceId(e.target.value)}
+              placeholder="team-alpha"
+              autoComplete="off"
+              spellCheck={false}
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label style={fieldLabelStyle}>Workspace token</label>
+            <input
+              value={workspaceToken}
+              onChange={(e) => setWorkspaceToken(e.target.value)}
+              placeholder="optional"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              style={inputStyle}
+            />
+          </div>
+        </div>
+
+        <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.42)', lineHeight: 1.5 }}>
+          The workspace id is saved in local storage. The workspace token stays in this browser session so auth wiring can be added without changing the setup flow.
+        </p>
 
         <button
           type="button"
@@ -945,7 +588,6 @@ export default function SetupPage() {
           style={{
             alignSelf: 'flex-start',
             padding: '0.6rem 1.15rem',
-            marginTop: '0.4rem',
             borderRadius: 4,
             border: 'none',
             background:
@@ -966,48 +608,24 @@ export default function SetupPage() {
             gap: '0.45rem',
           }}
         >
-          {probePhase === 'probing' ? 'Testing connection…' : 'Test & open Chorus'}
+          {probePhase === 'probing' ? 'Testing connection…' : 'Test & open workspace'}
           <ArrowRight size={14} />
         </button>
 
         {probePhase === 'error' && (
-          <div
-            role="alert"
-            style={{
-              padding: '0.7rem 0.85rem',
-              borderRadius: 5,
-              border: '1px solid rgba(246,168,154,0.35)',
-              background: 'rgba(60,30,30,0.3)',
-              color: '#f6a89a',
-              fontSize: 12.5,
-              lineHeight: 1.5,
-              wordBreak: 'break-word',
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 3 }}>Orchestrator unreachable</div>
-            <div style={{ color: 'rgba(246,200,190,0.88)' }}>{probeMessage}</div>
-          </div>
+          <Notice kind="error" title="Control plane unreachable">
+            {probeMessage}
+          </Notice>
         )}
+
         {probePhase === 'ok' && (
-          <div
-            role="status"
-            style={{
-              padding: '0.6rem 0.85rem',
-              borderRadius: 5,
-              border: '1px solid rgba(143,212,168,0.35)',
-              background: 'rgba(30,60,40,0.32)',
-              color: 'rgba(200,240,210,0.92)',
-              fontSize: 12.5,
-            }}
-          >
-            Verified. Opening Chorus…
-          </div>
+          <Notice kind="success" title="Verified">
+            Opening the review workspace…
+          </Notice>
         )}
       </StepShell>
     ),
   }
-
-  const progress = ((clampedIndex + 1) / totalSteps) * 100
 
   return (
     <div
@@ -1021,7 +639,6 @@ export default function SetupPage() {
       }}
     >
       <div style={{ maxWidth: '40rem', margin: '0 auto' }}>
-        {/* Top nav */}
         <nav
           aria-label="Breadcrumb"
           style={{
@@ -1064,62 +681,28 @@ export default function SetupPage() {
           </span>
         </nav>
 
-        {/* Progress */}
         <div style={{ marginBottom: '2rem' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-              marginBottom: '0.4rem',
-            }}
-          >
-            <span
-              style={{
-                fontSize: 11,
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.4)',
-                fontFamily: 'var(--font-geist-mono), monospace',
-              }}
-            >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.4rem' }}>
+            <span style={{ fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-geist-mono), monospace' }}>
               Step {clampedIndex + 1} of {totalSteps}
             </span>
-            <span
-              style={{
-                fontSize: 12,
-                color: 'rgba(255,255,255,0.52)',
-              }}
-            >
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.52)' }}>
               {steps[clampedIndex].label}
             </span>
           </div>
-          <div
-            role="progressbar"
-            aria-valuenow={clampedIndex + 1}
-            aria-valuemin={1}
-            aria-valuemax={totalSteps}
-            style={{
-              height: 3,
-              borderRadius: 3,
-              background: 'rgba(255,255,255,0.06)',
-              overflow: 'hidden',
-            }}
-          >
+          <div role="progressbar" aria-valuenow={clampedIndex + 1} aria-valuemin={1} aria-valuemax={totalSteps} style={{ height: 3, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
             <motion.div
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.35, ease: 'easeOut' }}
               style={{
                 height: '100%',
-                background:
-                  'linear-gradient(90deg, rgba(180,200,255,0.95), rgba(200,180,255,0.75))',
+                background: 'linear-gradient(90deg, rgba(180,200,255,0.95), rgba(200,180,255,0.75))',
                 boxShadow: '0 0 14px rgba(180,200,255,0.35)',
               }}
             />
           </div>
         </div>
 
-        {/* Animated step */}
         <div style={{ position: 'relative', minHeight: '24rem' }}>
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
@@ -1134,7 +717,6 @@ export default function SetupPage() {
           </AnimatePresence>
         </div>
 
-        {/* Sticky nav */}
         <div
           style={{
             position: 'sticky',
@@ -1142,7 +724,6 @@ export default function SetupPage() {
             marginTop: '2rem',
             paddingTop: '1rem',
             display: 'flex',
-            gap: '0.6rem',
             justifyContent: 'space-between',
             alignItems: 'center',
             background: 'linear-gradient(to top, rgba(5,5,8,0.96), rgba(5,5,8,0.0))',
@@ -1199,16 +780,91 @@ export default function SetupPage() {
   )
 }
 
-interface PathCardProps {
+const fieldLabelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: 11.5,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'rgba(255,255,255,0.5)',
+  marginBottom: '0.3rem',
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '0.6rem 0.75rem',
+  borderRadius: 4,
+  border: '1px solid rgba(255,255,255,0.14)',
+  background: 'rgba(0,0,0,0.35)',
+  color: '#fff',
+  fontSize: 13.5,
+  fontFamily: 'var(--font-geist-mono), monospace',
+}
+
+function Notice({
+  kind,
+  title,
+  children,
+}: {
+  kind: 'info' | 'warn' | 'success' | 'error'
+  title: string
+  children: React.ReactNode
+}) {
+  const palette = {
+    info: {
+      border: '1px solid rgba(180,200,255,0.22)',
+      background: 'rgba(30,40,70,0.3)',
+      color: 'rgba(210,225,255,0.9)',
+    },
+    warn: {
+      border: '1px solid rgba(255,200,120,0.3)',
+      background: 'rgba(60,45,20,0.35)',
+      color: 'rgba(255,230,180,0.88)',
+    },
+    success: {
+      border: '1px solid rgba(143,212,168,0.35)',
+      background: 'rgba(30,60,40,0.32)',
+      color: 'rgba(200,240,210,0.92)',
+    },
+    error: {
+      border: '1px solid rgba(246,168,154,0.35)',
+      background: 'rgba(60,30,30,0.3)',
+      color: '#f6a89a',
+    },
+  }[kind]
+
+  return (
+    <div
+      style={{
+        padding: '0.75rem 0.9rem',
+        borderRadius: 5,
+        border: palette.border,
+        background: palette.background,
+        color: palette.color,
+        fontSize: 12.5,
+        lineHeight: 1.55,
+      }}
+    >
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      <div>{children}</div>
+    </div>
+  )
+}
+
+function PathCard({
+  selected,
+  onClick,
+  icon,
+  title,
+  description,
+  hint,
+}: {
   selected: boolean
   onClick: () => void
   icon: React.ReactNode
   title: string
   description: string
   hint?: string
-}
-
-function PathCard({ selected, onClick, icon, title, description, hint }: PathCardProps) {
+}) {
   return (
     <button
       type="button"
@@ -1218,13 +874,10 @@ function PathCard({ selected, onClick, icon, title, description, hint }: PathCar
         textAlign: 'left',
         padding: '1rem 1.1rem',
         borderRadius: 7,
-        border: selected
-          ? '1px solid rgba(180,200,255,0.5)'
-          : '1px solid rgba(255,255,255,0.08)',
+        border: selected ? '1px solid rgba(180,200,255,0.5)' : '1px solid rgba(255,255,255,0.08)',
         background: selected ? 'rgba(180,200,255,0.07)' : 'rgba(255,255,255,0.025)',
         color: 'rgba(255,255,255,0.92)',
         cursor: 'pointer',
-        transition: 'all 160ms ease',
         display: 'flex',
         gap: '0.85rem',
         alignItems: 'flex-start',
@@ -1247,35 +900,14 @@ function PathCard({ selected, onClick, icon, title, description, hint }: PathCar
         {icon}
       </span>
       <div style={{ flex: 1 }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 600,
-            marginBottom: 4,
-            color: 'rgba(255,255,255,0.96)',
-          }}
-        >
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, color: 'rgba(255,255,255,0.96)' }}>
           {title}
         </div>
-        <div
-          style={{
-            fontSize: 12.5,
-            lineHeight: 1.5,
-            color: 'rgba(255,255,255,0.6)',
-          }}
-        >
+        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: 'rgba(255,255,255,0.6)' }}>
           {description}
         </div>
         {hint && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 11,
-              color: 'rgba(160,200,255,0.8)',
-              fontFamily: 'var(--font-geist-mono), monospace',
-              letterSpacing: '0.02em',
-            }}
-          >
+          <div style={{ marginTop: 6, fontSize: 11, color: 'rgba(160,200,255,0.8)', fontFamily: 'var(--font-geist-mono), monospace' }}>
             {hint}
           </div>
         )}

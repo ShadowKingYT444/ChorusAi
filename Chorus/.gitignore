@@ -63,5 +63,6 @@ bin/
 chorus.db
 chorus.db-*
 chorus_smoke.db*
+chorus_ui_smoke.db*
 chorus_seed_verify.db*
 .smoke_logs/

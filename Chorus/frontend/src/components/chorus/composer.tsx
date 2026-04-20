@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowUp, Paperclip, Sparkles } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
-import { AgentCountPicker } from './agent-count-picker'
 import type { NetworkStatus } from '@/hooks/use-network-status'
 import { cn } from '@/lib/utils'
 
@@ -13,13 +12,12 @@ interface Props {
   onChange: (v: string) => void
   onSubmit: () => void
   disabled?: boolean
-  voices: number
-  onVoicesChange: (n: number) => void
   status: NetworkStatus
-  maxVoices?: number
-  /** Peers with a usable completion endpoint. Send button only enables when > 0. */
   readyPeerCount?: number
   placeholder?: string
+  templateLabel: string
+  modeLabel: string
+  deliverable: string
 }
 
 export function ChorusComposer({
@@ -27,17 +25,17 @@ export function ChorusComposer({
   onChange,
   onSubmit,
   disabled,
-  voices,
-  onVoicesChange,
   status,
-  maxVoices,
   readyPeerCount,
-  placeholder = 'Ask the chorus…',
+  placeholder = 'Paste the plan, RFC, or brief you want reviewed…',
+  templateLabel,
+  modeLabel,
+  deliverable,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const hasText = value.trim().length > 0
   const effectiveReady = readyPeerCount ?? status.online
-  const canSend = hasText && !disabled && effectiveReady > 0
+  const canSend = hasText && !disabled
 
   const autoSize = useCallback(() => {
     const el = ref.current
@@ -73,7 +71,21 @@ export function ChorusComposer({
           backdropFilter: 'blur(14px)',
         }}
       >
-        <div className="flex gap-3 px-4 pt-3.5 pb-2">
+        <div
+          className="mx-4 mt-3 flex flex-wrap items-center gap-2 border-b border-white/6 pb-2"
+        >
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-white/72">
+            {templateLabel}
+          </span>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-white/72">
+            {modeLabel}
+          </span>
+          <span className="font-sans text-[11.5px] text-white/45">
+            Output: {deliverable}
+          </span>
+        </div>
+
+        <div className="flex gap-3 px-4 pt-3 pb-2">
           <Textarea
             ref={ref}
             value={value}
@@ -82,7 +94,7 @@ export function ChorusComposer({
             placeholder={placeholder}
             rows={1}
             className={cn(
-              'flex-1 min-h-[40px] max-h-[220px] resize-none bg-transparent border-none px-0 py-1',
+              'flex-1 min-h-[72px] max-h-[220px] resize-none bg-transparent border-none px-0 py-1',
               'font-sans text-[14.5px] text-white/90 placeholder:text-white/35 leading-relaxed',
               'focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0',
             )}
@@ -105,13 +117,8 @@ export function ChorusComposer({
             <Sparkles className="w-4 h-4" />
           </button>
 
-          <div className="flex-1 min-w-0 px-1">
-            <AgentCountPicker
-              value={voices}
-              onChange={onVoicesChange}
-              status={status}
-              maxVoices={maxVoices}
-            />
+          <div className="flex-1 min-w-0 px-1 font-sans text-[11.5px] text-white/42">
+            Focus on the decision, evidence, constraints, and what would change the verdict.
           </div>
 
           <button
@@ -135,11 +142,11 @@ export function ChorusComposer({
       <div className="mt-2 text-center font-mono text-[10px] text-white/35 tracking-[0.08em]">
         {status.mode === 'live'
           ? effectiveReady > 0
-            ? `Network live · ${effectiveReady} peer${effectiveReady === 1 ? '' : 's'} ready`
-            : 'Network live · waiting for a peer to register an endpoint'
+            ? `Review capacity live · ${effectiveReady} reviewer${effectiveReady === 1 ? '' : 's'} visible plus any managed anchors`
+            : 'Review capacity live · browser reviewers hidden, managed anchors may still route the job'
           : status.mode === 'unconfigured'
-          ? 'No orchestrator set · open /setup to connect'
-          : 'Orchestrator unreachable · check NEXT_PUBLIC_ORCHESTRATOR_BASE_URL'}
+          ? 'No control plane set · open /setup to connect'
+          : 'Control plane unreachable · check NEXT_PUBLIC_ORCHESTRATOR_BASE_URL'}
       </div>
     </motion.div>
   )

@@ -31,7 +31,7 @@ export function ChorusTopBar({ title, status, onNewChat }: Props) {
           <ChevronDown className="w-3.5 h-3.5 text-white/45 group-hover:text-white/75 transition-colors" />
         </button>
         <span className="font-mono text-[10px] text-white/30 tracking-[0.08em] uppercase hidden md:inline">
-          · distributed swarm
+          · private review workspace
         </span>
       </div>
 
@@ -39,7 +39,7 @@ export function ChorusTopBar({ title, status, onNewChat }: Props) {
         <NetworkChip status={status} />
         <button
           onClick={onNewChat}
-          aria-label="new conversation"
+          aria-label="new review"
           className="p-2 rounded-md text-white/65 hover:text-white hover:bg-white/5 transition-colors"
         >
           <SquarePen className="w-4 h-4" />

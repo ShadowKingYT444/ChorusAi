@@ -215,6 +215,8 @@ class JobSpec(BaseModel):
     rounds: int = Field(ge=1, le=128)
     payout: float = Field(ge=0.0)
     embedding_model_version: str | None = None
+    review_mode: str | None = None
+    template_id: str | None = None
 
 
 class CreateJobRequest(JobSpec):
@@ -224,6 +226,8 @@ class CreateJobRequest(JobSpec):
 class CreateJobResponse(BaseModel):
     job_id: str
     status: JobStatus
+    workspace_id: str
+    shadow_credit_cost: int
 
 
 class SlotRegistration(BaseModel):
@@ -233,7 +237,9 @@ class SlotRegistration(BaseModel):
 
 
 class RegisterAgentsRequest(BaseModel):
-    slots: dict[str, SlotRegistration]
+    slots: dict[str, SlotRegistration] = Field(default_factory=dict)
+    routing_mode: Literal["auto", "manual"] | None = None
+    target_peer_ids: list[str] | None = None
 
 
 class RegisterAgentsResponse(BaseModel):
@@ -282,11 +288,14 @@ class RoundAudit(BaseModel):
 
 class JobRecord(BaseModel):
     job_id: str
+    workspace_id: str
     spec: JobSpec
     status: JobStatus = JobStatus.pending
     slots: dict[str, SlotRuntime] = Field(default_factory=dict)
     rounds_data: list[RoundAudit] = Field(default_factory=list)
     current_round: int | None = None
+    shadow_credit_cost: int = 0
+    routing_mode: Literal["auto", "manual"] | None = None
     settlement_preview: dict[str, Any] | None = None
     final_answer: str | None = None
     citations: list[str] | None = None
@@ -295,9 +304,12 @@ class JobRecord(BaseModel):
 
 class JobPublicView(BaseModel):
     job_id: str
+    workspace_id: str
     status: JobStatus
     current_round: int | None
     error: str | None
+    shadow_credit_cost: int = 0
+    routing_mode: Literal["auto", "manual"] | None = None
     settlement_preview: dict[str, Any] | None = None
     final_answer: str | None = None
     citations: list[str] | None = None
@@ -305,9 +317,12 @@ class JobPublicView(BaseModel):
 
 class OperatorView(BaseModel):
     job_id: str
+    workspace_id: str
     status: JobStatus
     current_round: int | None
     error: str | None
+    shadow_credit_cost: int = 0
+    routing_mode: Literal["auto", "manual"] | None = None
     rounds: list[RoundAudit]
     settlement_preview: dict[str, Any] | None = None
     final_answer: str | None = None

@@ -1,3 +1,5 @@
+import { readWorkspaceId, readWorkspaceToken } from '@/lib/workspace-config'
+
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed'
 export type PruneStatus = 'valid' | 'suspect' | 'pruned'
 export type PeerStatus = 'idle' | 'busy'
@@ -167,11 +169,15 @@ export interface CreateJobRequest {
   rounds: number
   payout: number
   embedding_model_version?: string | null
+  review_mode?: string | null
+  template_id?: string | null
 }
 
 export interface CreateJobResponse {
   job_id: string
   status: JobStatus
+  workspace_id: string
+  shadow_credit_cost: number
 }
 
 export interface SlotRegistration {
@@ -182,6 +188,8 @@ export interface SlotRegistration {
 
 export interface RegisterAgentsRequest {
   slots: Record<string, SlotRegistration>
+  routing_mode?: 'auto' | 'manual' | null
+  target_peer_ids?: string[] | null
 }
 
 export interface RegisterAgentsResponse {
@@ -339,16 +347,26 @@ function ensureBaseUrl(): string {
   return baseUrl
 }
 
+function getWorkspaceCredentials(): { workspaceId: string; workspaceToken: string } {
+  return {
+    workspaceId: readWorkspaceId(),
+    workspaceToken: readWorkspaceToken(),
+  }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = ensureBaseUrl()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), DEFAULT_TIMEOUT_MS)
+  const { workspaceId, workspaceToken } = getWorkspaceCredentials()
   try {
     const res = await fetch(`${baseUrl}${path}`, {
       ...init,
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
+        ...(workspaceId ? { 'X-Chorus-Workspace': workspaceId } : {}),
+        ...(workspaceToken ? { Authorization: `Bearer ${workspaceToken}` } : {}),
         ...(init?.headers ?? {}),
       },
     })
@@ -373,7 +391,11 @@ export function getSignalingWsUrl(): string {
 
 export function getJobEventsWsUrl(jobId: string): string {
   const base = ensureBaseUrl()
-  return base.replace(/^http/i, 'ws') + `/ws/jobs/${encodeURIComponent(jobId)}`
+  const url = new URL(base.replace(/^http/i, 'ws') + `/ws/jobs/${encodeURIComponent(jobId)}`)
+  const { workspaceId, workspaceToken } = getWorkspaceCredentials()
+  if (workspaceId) url.searchParams.set('workspace_id', workspaceId)
+  if (workspaceToken) url.searchParams.set('token', workspaceToken)
+  return url.toString()
 }
 
 export function openJobEventsSocket(

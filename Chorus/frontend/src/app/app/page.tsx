@@ -17,7 +17,7 @@ function NetworkSkeleton() {
           letterSpacing: '0.18em', textTransform: 'uppercase',
         }}
       >
-        Initialising network
+        Initialising review trace
       </div>
     </div>
   )

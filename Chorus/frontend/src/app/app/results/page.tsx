@@ -11,6 +11,7 @@ import { buildClustersFromMessages, buildCostChartData, buildResults } from '@/l
 import { buildAgentContributions } from '@/lib/runtime/agent-contributions'
 import { AgentContributions } from '@/components/results/agent-contributions'
 import Link from 'next/link'
+import { getReviewMode, getReviewTemplate } from '@/lib/review-config'
 
 const SANS = 'var(--font-geist-sans)'
 const MONO = 'var(--font-geist-mono)'
@@ -159,7 +160,7 @@ function ConfidenceGauge({ value }: { value: number }) {
         </text>
       </svg>
       <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.30)', letterSpacing: '0.14em' }}>
-        CONSENSUS CONFIDENCE
+        REPORT CONFIDENCE
       </span>
     </div>
   )
@@ -207,7 +208,7 @@ function ClusterCard({
           {cluster.name}
         </span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(255,255,255,0.25)', marginLeft: 'auto' }}>
-          {cluster.agentCount} agents
+          {cluster.agentCount} reviewers
         </span>
       </div>
 
@@ -288,7 +289,7 @@ function StatBlock({ label, target, suffix = '', delay = 0, decimals = 0 }: {
 
 // ─── Round Timeline ───────────────────────────────────────────────────────────
 
-const ROUND_LABELS = ['Foundation', 'Convergence', 'Resolution']
+const ROUND_LABELS = ['Initial read', 'Cross-check', 'Verdict']
 const TYPE_COLORS = {
   propose: 'rgba(255,255,255,0.55)',
   critique: 'rgba(255,100,100,0.65)',
@@ -350,7 +351,7 @@ function RoundTimeline({
         color: 'rgba(255,255,255,0.50)', textTransform: 'uppercase',
         display: 'block', marginBottom: '1.4rem',
       } as React.CSSProperties}>
-        Consensus Timeline
+        Review Timeline
       </span>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
         {rounds.map((round, i) => (
@@ -368,7 +369,7 @@ function RoundTimeline({
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
               <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.30)', letterSpacing: '0.12em' }}>
-                ROUND {round.round}
+                PASS {round.round}
               </span>
               <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.20)', letterSpacing: '0.06em' }}>
                 {round.startTs}-{round.endTs}
@@ -376,10 +377,10 @@ function RoundTimeline({
             </div>
 
             <div style={{ fontFamily: SANS, fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.72)', marginBottom: 2 }}>
-              {ROUND_LABELS[i] ?? `Round ${round.round}`}
+              {ROUND_LABELS[i] ?? `Pass ${round.round}`}
             </div>
             <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', marginBottom: 16 }}>
-              {round.count} messages
+              {round.count} review events
             </div>
 
             {/* Type breakdown bar */}
@@ -456,6 +457,9 @@ function ResultsPageContent() {
     () => buildAgentContributions(messages, runtime.settlement),
     [messages, runtime.settlement],
   )
+  const reviewMode = runtime.session?.reviewMode ? getReviewMode(runtime.session.reviewMode) : null
+  const reviewTemplate = runtime.session?.reviewTemplate ? getReviewTemplate(runtime.session.reviewTemplate) : null
+  const creditsUsed = r.agentCount * r.rounds
 
   const { verdictHeadline, verdictBody } = useMemo(() => {
     const full = (r.finalPrediction ?? '').trim()
@@ -509,7 +513,7 @@ function ResultsPageContent() {
                 marginBottom: '1.2rem',
               }}
             >
-              No results yet
+              No report yet
             </span>
             <h1
               style={{
@@ -522,12 +526,11 @@ function ResultsPageContent() {
               }}
             >
               {hasSession
-                ? 'This simulation has no agent responses yet.'
-                : 'Run a chat first and results will appear here.'}
+                ? 'This review has no reviewer responses yet.'
+                : 'Run a review first and the report will appear here.'}
             </h1>
             <p style={{ fontFamily: SANS, fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: '1.6rem', lineHeight: 1.5 }}>
-              Send a prompt to the chorus from the home page. Each peer response is aggregated
-              into clusters, consensus, and a cost comparison.
+              Start from the review workspace. Chorus will synthesize reviewer signals into perspectives, a verdict, and a usage summary.
             </p>
             <Link
               href="/"
@@ -543,7 +546,7 @@ function ResultsPageContent() {
                 textDecoration: 'none',
               }}
             >
-              Go to chat
+              Open review workspace
             </Link>
           </div>
         </div>
@@ -579,7 +582,7 @@ function ResultsPageContent() {
                   display: 'block', marginBottom: '1.4rem',
                 } as React.CSSProperties}
               >
-                Simulation Complete · {r.agentCount} agents · {r.rounds} rounds · {r.totalMessages.toLocaleString()} messages
+                Report ready · {reviewTemplate?.label ?? 'Custom review'} · {reviewMode?.label ?? `${r.rounds}-pass`} · {r.totalMessages.toLocaleString()} events
               </motion.span>
 
               <h1 style={{
@@ -610,9 +613,9 @@ function ResultsPageContent() {
               {/* Stat row */}
               <div style={{ display: 'flex', gap: '2.5rem', flexWrap: 'wrap' }}>
                 <StatBlock label="Wall time" target={r.wallTimeSeconds} suffix="s" delay={0.4} />
-                <StatBlock label="Nodes" target={r.nodesContributing} delay={0.5} />
+                <StatBlock label="Reviewers" target={r.nodesContributing} delay={0.5} />
                 <StatBlock label="Messages" target={r.totalMessages} delay={0.6} />
-                <StatBlock label="Rounds" target={r.rounds} delay={0.7} />
+                <StatBlock label="Credits" target={creditsUsed} delay={0.7} />
               </div>
             </div>
 
@@ -631,7 +634,7 @@ function ResultsPageContent() {
               color: 'rgba(255,255,255,0.50)', textTransform: 'uppercase',
               display: 'block', marginBottom: '1.4rem',
             } as React.CSSProperties}>
-              Cluster Breakdown
+              Review Perspectives
             </span>
 
             {/* Asymmetric grid */}
@@ -672,7 +675,7 @@ function ResultsPageContent() {
                   transition={{ delay: 0.2, type: 'spring', stiffness: 180, damping: 28 }}
                   style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.18em', color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', marginBottom: '1rem' }}
                 >
-                  Cost Comparison
+                  Usage Summary
                 </motion.p>
 
                 <motion.p
@@ -681,7 +684,7 @@ function ResultsPageContent() {
                   transition={{ delay: 0.3, type: 'spring', stiffness: 180, damping: 28 }}
                   style={{ fontFamily: SANS, fontSize: 'clamp(0.9rem, 1.6vw, 1.1rem)', color: 'rgba(255,255,255,0.38)', margin: '0 0 0.5rem' }}
                 >
-                  Cloud API equivalent: ~${r.costCloud.toFixed(2)}
+                  Benchmark cloud spend: ~${r.costCloud.toFixed(2)}
                 </motion.p>
 
                 <motion.p
@@ -696,11 +699,11 @@ function ResultsPageContent() {
                     margin: '0 0 2rem',
                   }}
                 >
-                  We ran it for ${r.costActual.toFixed(2)}.
+                  Credits used: {creditsUsed}
                 </motion.p>
 
                 <p style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(255,255,255,0.22)', marginBottom: '1.8rem', letterSpacing: '0.06em' }}>
-                  {r.agentCount} agents · {r.rounds} rounds · {r.totalMessages.toLocaleString()} messages · {r.wallTimeSeconds}s
+                  {r.agentCount} reviewers · {r.rounds} passes · {r.totalMessages.toLocaleString()} events · {r.wallTimeSeconds}s
                 </p>
 
                 {/* Primary CTA - magnetic, filled white */}
@@ -720,7 +723,7 @@ function ResultsPageContent() {
                     transition: 'background-color 150ms ease-out, transform 150ms ease-out',
                   }}
                 >
-                  Run another simulation
+                  Run another review
                 </motion.button>
               </motion.div>
 
@@ -764,7 +767,7 @@ function ResultsPageContent() {
                 marginTop: '1rem', letterSpacing: '0.12em',
               }}
             >
-              WE&apos;RE NOT SCALING MODELS - WE&apos;RE SCALING MINDS.
+              PRIVATE SWARM REVIEW FOR DECISIONS THAT CANNOT RELY ON A SINGLE ANSWER.
             </motion.p>
           </div>
 
@@ -781,7 +784,7 @@ export default function ResultsPage() {
         <div
           className="flex h-[100dvh] items-center justify-center bg-black font-mono text-[10px] text-white/30 tracking-widest"
         >
-          LOADING RESULTS…
+          LOADING REPORT…
         </div>
       }
     >

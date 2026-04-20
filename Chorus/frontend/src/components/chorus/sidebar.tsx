@@ -3,8 +3,8 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import {
+  ActivitySquare,
   MessageSquarePlus,
-  Network,
   Rocket,
   Settings2,
   Sparkles,
@@ -45,7 +45,6 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
         backdropFilter: 'blur(12px)',
       }}
     >
-      {/* Brand */}
       <div className="flex items-center gap-2.5 px-4 h-14 border-b border-white/5">
         <div
           className="relative grid place-items-center w-7 h-7 rounded-lg"
@@ -64,7 +63,6 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
         </span>
       </div>
 
-      {/* New chat */}
       <div className="px-3 pt-3">
         <button
           onClick={onNewChat}
@@ -76,21 +74,19 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
         >
           <MessageSquarePlus className="w-4 h-4 text-white/75 group-hover:text-white transition-colors" />
           <span className="font-sans text-[12.5px] text-white/85 group-hover:text-white transition-colors">
-            New conversation
+            New review
           </span>
         </button>
       </div>
 
-      {/* Nav */}
       <nav className="px-3 pt-4 flex flex-col gap-0.5">
-        <NavItem icon={<Rocket className="w-3.5 h-3.5" />} label="Get Started" href="/setup" />
-        <NavItem icon={<Network className="w-3.5 h-3.5" />} label="Network" href="/app" />
+        <NavItem icon={<Rocket className="w-3.5 h-3.5" />} label="Setup" href="/setup" />
+        <NavItem icon={<ActivitySquare className="w-3.5 h-3.5" />} label="Review Trace" href="/app" />
       </nav>
 
-      {/* History */}
       <div className="px-4 pt-5 pb-2 flex items-center justify-between">
         <span className="font-mono text-[9.5px] text-white/35 uppercase tracking-[0.12em]">
-          Past chats
+          Saved reviews
         </span>
         <span className="font-mono text-[9.5px] text-white/25 tabular-nums">
           {sorted.length}
@@ -99,11 +95,12 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         {sorted.length === 0 ? (
           <div className="px-3 py-4 font-sans text-[11.5px] text-white/35 leading-relaxed">
-            No past chats yet. Send a prompt to the chorus - it will save here.
+            No saved reviews yet. Launch one and the report trail will show up here.
           </div>
         ) : (
           sorted.map((c, i) => {
             const snippet = firstUserSnippet(c)
+            const cadence = c.reviewMode ?? `${c.voices} reviewers`
             return (
               <motion.div
                 key={c.id}
@@ -134,17 +131,16 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
                     </div>
                   )}
                   <div className="mt-1 font-mono text-[9.5px] text-white/35">
-                    {c.voices} voice{c.voices === 1 ? '' : 's'} · {c.turns.length} turn
-                    {c.turns.length === 1 ? '' : 's'}
+                    {cadence} · {c.turns.length} {c.turns.length === 1 ? 'entry' : 'entries'}
                   </div>
                 </button>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (confirm('Delete this chat?')) deleteChat(c.id)
+                    if (confirm('Delete this review?')) deleteChat(c.id)
                   }}
-                  aria-label="delete chat"
+                  aria-label="delete review"
                   className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-white/50 hover:text-white/90 transition-opacity"
                 >
                   <Trash2 className="w-3 h-3" />
@@ -155,7 +151,6 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
         )}
       </div>
 
-      {/* Footer */}
       <div className="px-3 py-3 border-t border-white/5 flex items-center gap-2">
         <div
           className="w-7 h-7 rounded-full grid place-items-center font-mono text-[11px] text-white/80"
@@ -168,7 +163,7 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
         </div>
         <div className="flex flex-col min-w-0">
           <span className="font-sans text-[12px] text-white/85 truncate">You</span>
-          <span className="font-mono text-[9.5px] text-white/45 truncate">prompter · local</span>
+          <span className="font-mono text-[9.5px] text-white/45 truncate">workspace owner · local</span>
         </div>
         <Link
           href="/setup"

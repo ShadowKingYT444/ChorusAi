@@ -63,7 +63,7 @@ function ContributionCard({ c }: { c: AgentContribution }) {
       </div>
 
       <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/5">
-        <Stat label="ROUNDS" value={String(c.roundsActive)} />
+        <Stat label="PASSES" value={String(c.roundsActive)} />
         <Stat label="AVG MS" value={c.avgLatencyMs > 0 ? String(Math.round(c.avgLatencyMs)) : '-'} />
         <Stat
           label="V/S/P"
@@ -72,11 +72,11 @@ function ContributionCard({ c }: { c: AgentContribution }) {
       </div>
 
       <div>
-        <div className="font-mono text-[9px] tracking-[0.12em] text-white/30 mb-1">PAYOUT</div>
+        <div className="font-mono text-[9px] tracking-[0.12em] text-white/30 mb-1">WEIGHT</div>
         <div className="font-mono text-[14px] text-white/80">{formatPayout(c.payout)}</div>
         {c.payoutBreakdown ? (
           <div className="font-mono text-[9px] text-white/35 mt-1">
-            {formatPayout(c.payoutBreakdown.floor)} floor + {formatPayout(c.consensusBonus)} consensus +{' '}
+            {formatPayout(c.payoutBreakdown.floor)} baseline + {formatPayout(c.consensusBonus)} alignment +{' '}
             {formatPayout(c.dissentBonus)} dissent
           </div>
         ) : (
@@ -109,15 +109,15 @@ export function AgentContributions({ contributions }: { contributions: AgentCont
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="font-display text-xl text-white/85 tracking-tight">Agent Contributions</h2>
+        <h2 className="font-display text-xl text-white/85 tracking-tight">Reviewer Contributions</h2>
         <p className="font-mono text-[10px] tracking-[0.12em] text-white/30">
-          PER-NODE USEFULNESS, PAYOUT, AND RELIABILITY
+          PER-REVIEWER USEFULNESS, WEIGHT, AND RELIABILITY
         </p>
       </div>
 
       {contributions.length === 0 ? (
         <div className="font-mono text-[12px] text-white/35 py-8 text-center border border-dashed border-white/8 rounded-sm">
-          Waiting for node contributions...
+          Waiting for reviewer contributions...
         </div>
       ) : (
         <>

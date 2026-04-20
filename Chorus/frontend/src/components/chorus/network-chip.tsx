@@ -17,11 +17,11 @@ export function NetworkChip({ status }: { status: NetworkStatus }) {
     : 'rgba(220,120,120,0.85)'
   const label = isLive
     ? online > 0
-      ? `${online} peer${online === 1 ? '' : 's'} online`
-      : 'no peers online'
+      ? `${online} reviewer${online === 1 ? '' : 's'} ready`
+      : 'capacity waiting'
     : isUnconfigured
-    ? 'no orchestrator'
-    : 'orchestrator offline'
+    ? 'no control plane'
+    : 'control plane offline'
 
   return (
     <div

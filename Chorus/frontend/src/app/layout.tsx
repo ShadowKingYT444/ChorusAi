@@ -22,7 +22,7 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: "Chorus",
-  description: "Chorus - a distributed LLM swarm. One prompt. Many voices. Consensus.",
+  description: "Chorus is a private swarm review workspace for RFCs, launches, architecture proposals, and risk decisions.",
 };
 
 export default function RootLayout({

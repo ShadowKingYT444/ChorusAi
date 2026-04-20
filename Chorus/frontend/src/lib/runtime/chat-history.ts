@@ -1,4 +1,5 @@
 import type { ChatTurn } from '@/components/chorus/chat-stream'
+import type { ReviewModeId, ReviewTemplateId } from '@/lib/review-config'
 
 const KEY = 'chorus_chat_history_v1'
 
@@ -10,6 +11,9 @@ export interface ChatRecord {
   updatedAt: number
   voices: number
   rounds?: number
+  reviewMode?: ReviewModeId
+  reviewTemplate?: ReviewTemplateId
+  workspaceId?: string
 }
 
 function emitChange() {

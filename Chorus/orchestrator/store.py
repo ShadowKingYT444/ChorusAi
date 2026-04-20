@@ -176,6 +176,9 @@ class JobStore:
         self._subscribers: dict[str, set[asyncio.Queue[dict[str, Any]]]] = defaultdict(set)
         self._db: "ChorusDB | None" = None
         self._seq: dict[str, int] = {}
+        self._workspace_usage: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"jobs_created": 0, "shadow_credits_reserved": 0}
+        )
 
     def attach_db(self, db: "ChorusDB") -> None:
         self._db = db
@@ -185,27 +188,55 @@ class JobStore:
             return
         _schedule(self._db.mirror_job(record.model_copy(deep=True)))
 
-    async def create_job(self, req: CreateJobRequest | JobSpec) -> JobRecord:
+    async def create_job(
+        self,
+        req: CreateJobRequest | JobSpec,
+        *,
+        workspace_id: str = "local-dev",
+    ) -> JobRecord:
         spec = req if isinstance(req, JobSpec) else JobSpec.model_validate(req.model_dump())
-        job = JobRecord(job_id=str(uuid.uuid4()), spec=spec)
+        shadow_credit_cost = int(spec.agent_count * spec.rounds)
+        job = JobRecord(
+            job_id=str(uuid.uuid4()),
+            workspace_id=workspace_id,
+            spec=spec,
+            shadow_credit_cost=shadow_credit_cost,
+        )
         async with self._lock:
             self._jobs[job.job_id] = job
+            usage = self._workspace_usage[workspace_id]
+            usage["jobs_created"] += 1
+            usage["shadow_credits_reserved"] += shadow_credit_cost
         self._mirror_job(job)
         return job
 
-    async def get_job(self, job_id: str) -> JobRecord | None:
+    async def get_job(self, job_id: str, workspace_id: str | None = None) -> JobRecord | None:
         async with self._lock:
-            return self._jobs.get(job_id)
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if workspace_id is not None and job.workspace_id != workspace_id:
+                return None
+            return job
 
     async def update_job(self, job: JobRecord) -> None:
         async with self._lock:
             self._jobs[job.job_id] = job
         self._mirror_job(job)
 
-    async def register_agents(self, job_id: str, req: RegisterAgentsRequest) -> JobRecord | None:
+    async def register_agents(
+        self,
+        job_id: str,
+        req: RegisterAgentsRequest,
+        *,
+        workspace_id: str | None = None,
+        routing_mode: str | None = None,
+    ) -> JobRecord | None:
         async with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
+                return None
+            if workspace_id is not None and job.workspace_id != workspace_id:
                 return None
             if len(req.slots) != job.spec.agent_count:
                 raise ValueError(
@@ -215,39 +246,56 @@ class JobStore:
                 slot_id: SlotRuntime(slot_id=slot_id, registration=registration)
                 for slot_id, registration in req.slots.items()
             }
+            job.routing_mode = routing_mode or req.routing_mode or job.routing_mode
             job.error = None
             self._jobs[job_id] = job
         self._mirror_job(job)
         return job
 
-    async def public_view(self, job_id: str) -> JobPublicView | None:
-        job = await self.get_job(job_id)
+    async def public_view(self, job_id: str, workspace_id: str | None = None) -> JobPublicView | None:
+        job = await self.get_job(job_id, workspace_id=workspace_id)
         if job is None:
             return None
         return JobPublicView(
             job_id=job.job_id,
+            workspace_id=job.workspace_id,
             status=job.status,
             current_round=job.current_round,
             error=job.error,
+            shadow_credit_cost=job.shadow_credit_cost,
+            routing_mode=job.routing_mode,
             settlement_preview=job.settlement_preview,
             final_answer=job.final_answer,
             citations=job.citations,
         )
 
-    async def operator_view(self, job_id: str) -> OperatorView | None:
-        job = await self.get_job(job_id)
+    async def operator_view(self, job_id: str, workspace_id: str | None = None) -> OperatorView | None:
+        job = await self.get_job(job_id, workspace_id=workspace_id)
         if job is None:
             return None
         return OperatorView(
             job_id=job.job_id,
+            workspace_id=job.workspace_id,
             status=job.status,
             current_round=job.current_round,
             error=job.error,
+            shadow_credit_cost=job.shadow_credit_cost,
+            routing_mode=job.routing_mode,
             rounds=job.rounds_data,
             settlement_preview=job.settlement_preview,
             final_answer=job.final_answer,
             citations=job.citations,
         )
+
+    async def workspace_summary(self, workspace_id: str) -> dict[str, int]:
+        async with self._lock:
+            usage = dict(self._workspace_usage.get(workspace_id, {}))
+        if not usage:
+            return {"jobs_created": 0, "shadow_credits_reserved": 0}
+        return {
+            "jobs_created": int(usage.get("jobs_created", 0)),
+            "shadow_credits_reserved": int(usage.get("shadow_credits_reserved", 0)),
+        }
 
     async def emit(self, job_id: str, event_type: str, payload: dict[str, Any]) -> None:
         event = {"type": event_type, **payload}

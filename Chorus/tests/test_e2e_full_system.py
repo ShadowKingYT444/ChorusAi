@@ -28,6 +28,16 @@ else:
 
 from orchestrator.main import app
 
+WORKSPACE_ID = "local-dev"
+WORKSPACE_TOKEN = "chorus-local-dev-token"
+
+
+def _auth_headers() -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {WORKSPACE_TOKEN}",
+        "X-Chorus-Workspace": WORKSPACE_ID,
+    }
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -89,7 +99,12 @@ def echo_agent_base_url() -> Iterator[str]:
 @pytest.mark.integration
 async def test_full_job_two_slots_two_rounds(echo_agent_base_url: str) -> None:
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test", timeout=30.0) as client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        timeout=30.0,
+        headers=_auth_headers(),
+    ) as client:
         cr = await client.post(
             "/jobs",
             json={
@@ -103,6 +118,8 @@ async def test_full_job_two_slots_two_rounds(echo_agent_base_url: str) -> None:
         )
         assert cr.status_code == 200, cr.text
         job_id = cr.json()["job_id"]
+        assert cr.json()["workspace_id"] == WORKSPACE_ID
+        assert cr.json()["shadow_credit_cost"] == 4
 
         reg = await client.post(
             f"/jobs/{job_id}/agents",
@@ -147,7 +164,12 @@ async def test_full_job_two_slots_two_rounds(echo_agent_base_url: str) -> None:
 @pytest.mark.integration
 async def test_full_job_demo_slots_complete() -> None:
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test", timeout=30.0) as client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        timeout=30.0,
+        headers=_auth_headers(),
+    ) as client:
         cr = await client.post(
             "/jobs",
             json={
@@ -161,6 +183,8 @@ async def test_full_job_demo_slots_complete() -> None:
         )
         assert cr.status_code == 200, cr.text
         job_id = cr.json()["job_id"]
+        assert cr.json()["workspace_id"] == WORKSPACE_ID
+        assert cr.json()["shadow_credit_cost"] == 9
 
         reg = await client.post(
             f"/jobs/{job_id}/agents",
@@ -189,6 +213,9 @@ async def test_full_job_demo_slots_complete() -> None:
         assert last.get("status") == "completed", f"timeout or bad state: {last!r}"
         assert last.get("final_answer")
         assert last.get("settlement_preview") is not None
+        assert last.get("workspace_id") == WORKSPACE_ID
+        assert last.get("shadow_credit_cost") == 9
+        assert last["settlement_preview"]["shadow_credits"] == 9
 
         op = await client.get(f"/jobs/{job_id}/operator")
         assert op.status_code == 200
@@ -198,3 +225,65 @@ async def test_full_job_demo_slots_complete() -> None:
             assert "chorus-skeptic-1" in rd["slots"]
             assert "chorus-optimist-2" in rd["slots"]
             assert "chorus-analyst-3" in rd["slots"]
+
+@pytest.mark.anyio
+async def test_jobs_require_workspace_auth() -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", timeout=10.0) as client:
+        res = await client.post(
+            "/jobs",
+            json={
+                "context": "ctx",
+                "prompt": "prompt",
+                "agent_count": 1,
+                "rounds": 1,
+                "payout": 0.0,
+            },
+        )
+    assert res.status_code == 401
+
+@pytest.mark.anyio
+async def test_auto_routing_uses_anchor_endpoints(
+    echo_agent_base_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ORC_ANCHOR_COMPLETION_BASE_URLS", echo_agent_base_url)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        timeout=30.0,
+        headers=_auth_headers(),
+    ) as client:
+        cr = await client.post(
+            "/jobs",
+            json={
+                "context": "You are running a private review.",
+                "prompt": "Assess the launch plan and return a verdict.",
+                "agent_count": 1,
+                "rounds": 1,
+                "payout": 0.0,
+                "embedding_model_version": "anchor-e2e",
+            },
+        )
+        assert cr.status_code == 200, cr.text
+        job_id = cr.json()["job_id"]
+
+        reg = await client.post(
+            f"/jobs/{job_id}/agents",
+            json={"slots": {}, "routing_mode": "auto"},
+        )
+        assert reg.status_code == 200, reg.text
+        assert reg.json()["registered_slots"] == ["anchor-1"]
+
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            gr = await client.get(f"/jobs/{job_id}")
+            assert gr.status_code == 200, gr.text
+            body = gr.json()
+            if body.get("status") == "completed":
+                assert body.get("shadow_credit_cost") == 1
+                break
+            await anyio.sleep(0.08)
+        else:
+            raise AssertionError("auto-routed anchor job did not complete")

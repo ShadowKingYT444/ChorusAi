@@ -7,10 +7,10 @@ import { useSimulation } from '@/hooks/use-simulation'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
 
 const NAV_ITEMS = [
-  { label: 'HOME',    path: '/', appendJob: false },
-  { label: 'NETWORK', path: '/app', appendJob: true },
-  { label: 'FEED',    path: '/app/feed', appendJob: true },
-  { label: 'RESULTS', path: '/app/results', appendJob: true },
+  { label: 'REVIEW', path: '/', appendJob: false },
+  { label: 'TRACE', path: '/app', appendJob: true },
+  { label: 'LIVE', path: '/app/feed', appendJob: true },
+  { label: 'REPORT', path: '/app/results', appendJob: true },
 ] as const
 
 export function TopBar() {
@@ -101,7 +101,7 @@ export function TopBar() {
             }}
           >
             <span className="font-mono text-[10px] text-white/40 tracking-[0.15em] uppercase truncate">
-              SIMULATING:{' '}
+              REVIEWING:{' '}
               <span className="text-white/75 normal-case tracking-normal">
                 &quot;{job.prompt}&quot;
               </span>
@@ -118,7 +118,7 @@ export function TopBar() {
           aria-hidden
         />
         <span className="font-mono text-[10px] tracking-widest" style={{ color: 'rgba(255,255,255,0.50)' }}>
-          NETWORK ONLINE
+          PRIVATE REVIEW ONLINE
         </span>
       </div>
     </header>
