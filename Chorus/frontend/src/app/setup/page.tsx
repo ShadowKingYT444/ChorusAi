@@ -314,8 +314,8 @@ export default function SetupPage() {
       note: TRAY_WARNING,
     },
     windows: {
-      code: 'Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve',
-      note: TRAY_WARNING,
+      code: 'Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\nwsl -e sh -lc "pkill -f ollama || true" 2>$null\nwsl --shutdown 2>$null\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve',
+      note: `${TRAY_WARNING} If port 11434 is still busy, WSL may be holding it through wslrelay.exe. The commands above shut that down too.`,
     },
     linux: {
       code: 'sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_HOST=0.0.0.0"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama',
@@ -329,8 +329,8 @@ export default function SetupPage() {
       note: TRAY_WARNING,
     },
     windows: {
-      code: `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve`,
-      note: TRAY_WARNING,
+      code: `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\nwsl -e sh -lc "pkill -f ollama || true" 2>$null\nwsl --shutdown 2>$null\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve`,
+      note: `${TRAY_WARNING} If you still see a bind error, run \`Get-NetTCPConnection -LocalPort 11434 -State Listen\` and look for wslrelay.exe.`,
     },
     linux: {
       code: `sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_ORIGINS=${origin}"\n#   Environment="OLLAMA_HOST=127.0.0.1"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama`,
@@ -459,6 +459,14 @@ export default function SetupPage() {
             linux: { code: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).linux.code, note: (mode === 'local' ? networkCommandsLan : networkCommandsTunnel).linux.note, label: 'Linux' },
           }}
         />
+        {os === 'windows' && (
+          <Notice kind="info" title="Windows + WSL note">
+            If <code>ollama serve</code> says port <code>11434</code> is already in use even after killing
+            <code>ollama.exe</code>, WSL is usually the real listener. That shows up as
+            <code>wslrelay.exe</code> in <code>Get-NetTCPConnection</code>. Run the setup command exactly as shown
+            so it clears both Windows Ollama and the WSL-held port before restarting.
+          </Notice>
+        )}
       </StepShell>
     ),
 
