@@ -388,6 +388,20 @@ class JobStore:
             return
         await self._db.insert_payment(job_id, quoted_amount_uc, status="quoted")
 
+    async def mark_payment_funded(
+        self, job_id: str, *, payer_wallet: str, tx_deposit: str
+    ) -> None:
+        if self._db is None:
+            return
+        await self._db.mark_payment_funded(
+            job_id, payer_wallet=payer_wallet, tx_deposit=tx_deposit
+        )
+
+    async def get_payment(self, job_id: str) -> dict[str, Any] | None:
+        if self._db is None:
+            return None
+        return await self._db.fetch_payment(job_id)
+
     async def settle_payment(self, job_id: str) -> dict[str, Any]:
         """Aggregate shares for `job_id`, persist settlement, return the split."""
         from orchestrator.billing import ComputeShare, split_payout

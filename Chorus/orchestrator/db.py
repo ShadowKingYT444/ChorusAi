@@ -702,6 +702,52 @@ class ChorusDB:
             logger.warning("fetch_shares failed: %s", exc)
             return []
 
+    async def mark_payment_funded(
+        self,
+        job_id: str,
+        *,
+        payer_wallet: str,
+        tx_deposit: str,
+    ) -> None:
+        if self._conn is None or self._lock is None:
+            return
+        try:
+            now = int(time.time())
+            async with self._lock:
+                await self._conn.execute(
+                    """
+                    UPDATE job_payments
+                       SET payer_wallet=?, tx_deposit=?, status='funded', funded_at=?
+                     WHERE job_id=? AND status IN ('quoted','funded')
+                    """,
+                    (payer_wallet, tx_deposit, now, job_id),
+                )
+                await self._conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mark_payment_funded failed: %s", exc)
+
+    async def fetch_payment(self, job_id: str) -> dict[str, Any] | None:
+        if self._conn is None or self._lock is None:
+            return None
+        try:
+            async with self._lock:
+                async with self._conn.execute(
+                    "SELECT job_id, payer_wallet, quoted_amount_uc, final_amount_uc, "
+                    "platform_fee_uc, tx_deposit, tx_settle, status, created_at, "
+                    "funded_at, settled_at FROM job_payments WHERE job_id=?",
+                    (job_id,),
+                ) as cur:
+                    row = await cur.fetchone()
+            if row is None:
+                return None
+            cols = ["job_id", "payer_wallet", "quoted_amount_uc", "final_amount_uc",
+                    "platform_fee_uc", "tx_deposit", "tx_settle", "status",
+                    "created_at", "funded_at", "settled_at"]
+            return dict(zip(cols, row))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("fetch_payment failed: %s", exc)
+            return None
+
     async def finalize_payment(
         self,
         job_id: str,

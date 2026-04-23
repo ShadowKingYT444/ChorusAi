@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Sparkles } from 'lucide-react'
 import { useSimulation } from '@/hooks/use-simulation'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
+import { WalletConnectButton } from '@/components/wallet-connect-button'
 
 const NAV_ITEMS = [
   { label: 'REVIEW', path: '/', appendJob: false },
@@ -110,8 +111,9 @@ export function TopBar() {
         )}
       </div>
 
-      {/* Right - status (static dot - always online, no decorative pulse) */}
-      <div className="flex items-center gap-2 w-[200px] justify-end">
+      {/* Right - status + wallet connect */}
+      <div className="flex items-center gap-3 w-[260px] justify-end">
+        <WalletConnectButton className="scale-[0.78] origin-right" />
         <span
           className="w-1.5 h-1.5 rounded-full shrink-0"
           style={{ background: 'var(--color-secure)' }}

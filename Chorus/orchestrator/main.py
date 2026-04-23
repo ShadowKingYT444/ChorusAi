@@ -620,11 +620,72 @@ async def quote_job_route(payload: dict, request: Request) -> dict:
         expected_tokens_in=expected_in,
         expected_tokens_out=expected_out,
     )
+    import hashlib
     import time as _t
     job_id = str(uuid.uuid4())
+    job_id_hex = hashlib.sha256(job_id.encode("utf-8")).hexdigest()
     expires_at = int(_t.time()) + 300
     await job_store.create_payment(job_id, int(quote["total_uc"]))
-    return {**quote, "job_id": job_id, "expires_at": expires_at}
+    return {
+        **quote,
+        "job_id": job_id,
+        "job_id_hex": job_id_hex,
+        "expires_at": expires_at,
+        "program_id": os.getenv("ORC_ESCROW_PROGRAM_ID", ""),
+        "usdc_mint": os.getenv("ORC_USDC_MINT", ""),
+        "cluster": os.getenv("ORC_SOLANA_CLUSTER", "devnet"),
+    }
+
+
+@app.post("/jobs/{job_id}/confirm")
+async def confirm_job_payment(job_id: str, payload: dict, request: Request) -> dict:
+    """Verify an on-chain deposit and mark the quoted job as funded."""
+    require_workspace_http(request)
+    tx_signature = str(payload.get("tx_signature") or "").strip()
+    payer = str(payload.get("payer") or "").strip()
+    if not tx_signature or not payer:
+        raise HTTPException(status_code=400, detail="tx_signature_and_payer_required")
+
+    import hashlib
+    from orchestrator.solana_client import (
+        SolanaClientError,
+        chain_enabled,
+        verify_deposit,
+    )
+
+    if not chain_enabled():
+        raise HTTPException(status_code=503, detail="on_chain_disabled")
+
+    payment = await job_store.get_payment(job_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="quote_not_found")
+    if payment.get("status") not in ("quoted", "funded"):
+        raise HTTPException(status_code=409, detail=f"quote_status_{payment.get('status')}")
+
+    expected_job_id_hex = hashlib.sha256(job_id.encode("utf-8")).hexdigest()
+    expected_amount = int(payment.get("quoted_amount_uc") or 0)
+
+    try:
+        record = await verify_deposit(
+            tx_signature,
+            expected_payer=payer,
+            expected_job_id_hex=expected_job_id_hex,
+            expected_min_amount_uc=expected_amount,
+        )
+    except SolanaClientError as exc:
+        raise HTTPException(status_code=400, detail=f"deposit_invalid:{exc}") from exc
+
+    await job_store.mark_payment_funded(
+        job_id, payer_wallet=record.payer, tx_deposit=record.tx_signature
+    )
+    return {
+        "job_id": job_id,
+        "status": "funded",
+        "tx_signature": record.tx_signature,
+        "payer": record.payer,
+        "amount_uc": record.amount_uc,
+        "slot": record.slot,
+    }
 
 
 @app.get("/jobs/{job_id}/settlement")
