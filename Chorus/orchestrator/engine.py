@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 import anyio
 import httpx
 
+from orchestrator import billing
 from orchestrator.broadcast_completions import normalize_completion_url
 from orchestrator.demo_agent import build_demo_final_answer, is_demo_completion_base
 from orchestrator.embeddings import EmbeddingService
@@ -90,6 +91,10 @@ class RoundEngine:
             job.status = JobStatus.completed
             job.settlement_preview = compute_settlement(job)
             try:
+                await self.store.settle_payment(job.job_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("settle_payment_failed", extra={"job_id": job.job_id})
+            try:
                 attach_receipt(
                     job.settlement_preview,
                     job.job_id,
@@ -111,11 +116,16 @@ class RoundEngine:
                 },
             )
         except Exception as exc:  # noqa: BLE001
+            logger.exception("job_failed", extra={"job_id": job_id})
             METRICS.inc("jobs_failed_total")
             job.status = JobStatus.failed
             job.error = str(exc)
             await self.store.update_job(job)
             await self.store.emit(job_id, "job_failed", {"payload": {"error": str(exc)}})
+            try:
+                await self.store.settle_payment(job_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("settle_payment_failed", extra={"job_id": job_id})
 
     async def _run_round(self, job: JobRecord, round_index: int) -> RoundAudit:
         active_slots = {
@@ -212,6 +222,28 @@ class RoundEngine:
                         "snippet": (response.text or "")[:140],
                     },
                 },
+            )
+
+            # Shadow-mode compute metering. TODO(phase-2): replace
+            # whitespace-token fallback with a proper tokenizer.
+            prompt_text = (contexts.get(slot_id) or "") + " " + (job.spec.prompt or "")
+            tokens_in = len(prompt_text.split())
+            tokens_out = len((response.text or "").split())
+            wall_ms = int(response.latency_ms or 0)
+            model_id = slot_runtime.registration.model_id or OLLAMA_MODEL
+            if response.ok:
+                cost_uc = billing.compute_cost_uc(model_id, tokens_in, tokens_out, wall_ms)
+            else:
+                cost_uc = 0
+            await self.store.record_share(
+                job_id=job.job_id,
+                peer_id=slot_runtime.registration.external_participant_id or slot_id,
+                wallet=None,
+                round_index=round_index,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                wall_ms=wall_ms,
+                cost_uc=cost_uc,
             )
 
         # Reuse per-slot response vectors from the watchdog batch (same model as kNN).
@@ -322,6 +354,7 @@ class RoundEngine:
                     )
                 _ = int((time.perf_counter() - start) * 1000)
             except Exception:  # noqa: BLE001
+                logger.exception("merge_final_answer_failed", extra={"job_id": job.job_id})
                 final_text = None
 
         if not final_text:

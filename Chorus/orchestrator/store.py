@@ -11,6 +11,7 @@ from orchestrator.models import (
     JobPublicView,
     JobRecord,
     JobSpec,
+    JobStatus,
     OperatorView,
     PeerEntry,
     PeerStatus,
@@ -181,6 +182,11 @@ class JobStore:
         self._workspace_usage: dict[str, dict[str, int]] = defaultdict(
             lambda: {"jobs_created": 0, "shadow_credits_reserved": 0}
         )
+        self._terminal_seen: set[str] = set()
+        self._terminal_callbacks: list[Any] = []
+
+    def on_terminal(self, callback: Any) -> None:
+        self._terminal_callbacks.append(callback)
 
     def attach_db(self, db: "ChorusDB") -> None:
         self._db = db
@@ -224,7 +230,17 @@ class JobStore:
     async def update_job(self, job: JobRecord) -> None:
         async with self._lock:
             self._jobs[job.job_id] = job
+            is_terminal = job.status in {JobStatus.completed, JobStatus.failed}
+            first_terminal = is_terminal and job.job_id not in self._terminal_seen
+            if first_terminal:
+                self._terminal_seen.add(job.job_id)
+            callbacks = list(self._terminal_callbacks) if first_terminal else []
         self._mirror_job(job)
+        for cb in callbacks:
+            try:
+                cb(job.job_id)
+            except Exception:  # noqa: BLE001
+                pass
 
     async def register_agents(
         self,
@@ -331,3 +347,65 @@ class JobStore:
             subscribers.discard(queue)
             if not subscribers:
                 self._subscribers.pop(job_id, None)
+
+    async def record_share(
+        self,
+        *,
+        job_id: str,
+        peer_id: str,
+        wallet: str | None,
+        round_index: int,
+        tokens_in: int,
+        tokens_out: int,
+        wall_ms: int,
+        cost_uc: int,
+        signed_receipt: str | None = None,
+    ) -> None:
+        """Record a per-peer, per-round compute share (shadow mode)."""
+        if self._db is None:
+            return
+        _schedule(
+            self._db.insert_share(
+                job_id=job_id,
+                peer_id=peer_id,
+                wallet=wallet,
+                round_index=round_index,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                wall_ms=wall_ms,
+                cost_uc=cost_uc,
+                signed_receipt=signed_receipt,
+            )
+        )
+
+    async def list_shares(self, job_id: str) -> list[dict[str, Any]]:
+        if self._db is None:
+            return []
+        return await self._db.fetch_shares(job_id)
+
+    async def create_payment(self, job_id: str, quoted_amount_uc: int) -> None:
+        if self._db is None:
+            return
+        await self._db.insert_payment(job_id, quoted_amount_uc, status="quoted")
+
+    async def settle_payment(self, job_id: str) -> dict[str, Any]:
+        """Aggregate shares for `job_id`, persist settlement, return the split."""
+        from orchestrator.billing import ComputeShare, split_payout
+
+        shares_raw = await self.list_shares(job_id)
+        shares = [
+            ComputeShare(
+                peer_id=str(r["peer_id"]),
+                wallet_address=r.get("wallet_address"),
+                cost_uc=int(r.get("compute_cost_uc") or 0),
+            )
+            for r in shares_raw
+        ]
+        split = split_payout(shares)
+        if self._db is not None:
+            await self._db.finalize_payment(
+                job_id,
+                final_amount_uc=int(split["subtotal_uc"]),
+                platform_fee_uc=int(split["platform_fee_uc"]),
+            )
+        return split

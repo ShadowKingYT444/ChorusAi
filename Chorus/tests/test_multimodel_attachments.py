@@ -51,7 +51,7 @@ def test_models_endpoint_and_auto_routes_honor_completion_model(monkeypatch, tmp
     monkeypatch.setenv("ORC_ANCHOR_MODEL_IDS", "llama3.2,phi4-mini")
 
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws:
             reg = _register(
                 ws,
                 peer_id="peer-qwen",

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
+import socket
 import time
 from urllib.parse import urlparse
 
@@ -155,17 +157,46 @@ class AgentInvoker:
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"}:
             raise ValueError("only http/https URLs are allowed")
-        if parsed.hostname is None:
+        host = parsed.hostname
+        if host is None:
             raise ValueError("missing host in completion URL")
-        blocked = {"169.254.169.254"}
-        if not self.allow_local:
-            blocked.update({"localhost", "127.0.0.1"})
-        if parsed.hostname in blocked:
-            raise ValueError("host blocked by SSRF guard")
-        if self.allowed_hosts and parsed.hostname not in self.allowed_hosts:
+        if self.allowed_hosts and host not in self.allowed_hosts:
             raise ValueError("host not in allowlist")
+        for ip in _resolve_host_ips(host):
+            if ip.is_multicast or ip.is_unspecified or ip.is_link_local:
+                raise ValueError("host blocked by SSRF guard")
+            if ip.is_loopback:
+                if not self.allow_local:
+                    raise ValueError("host blocked by SSRF guard")
+                continue
+            if ip.is_private and not self.allow_local:
+                raise ValueError("host blocked by SSRF guard")
+            if ip.is_reserved:
+                raise ValueError("host blocked by SSRF guard")
 
 def _parse_host_allowlist(raw: str) -> set[str]:
     if not raw:
         return set()
     return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def _resolve_host_ips(host: str) -> list[ipaddress._BaseAddress]:
+    try:
+        return [ipaddress.ip_address(host)]
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as exc:
+        raise ValueError(f"host {host!r} could not be resolved") from exc
+    out: list[ipaddress._BaseAddress] = []
+    for info in infos:
+        sockaddr = info[4]
+        addr = sockaddr[0]
+        try:
+            out.append(ipaddress.ip_address(addr.split("%", 1)[0]))
+        except ValueError:
+            continue
+    if not out:
+        raise ValueError(f"host {host!r} could not be resolved")
+    return out

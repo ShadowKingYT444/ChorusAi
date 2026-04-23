@@ -34,9 +34,9 @@ def test_clusters_empty_registry() -> None:
 def test_clusters_group_by_model() -> None:
     _clear_buffer()
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_a, \
-             client.websocket_connect("/ws/signaling") as ws_b, \
-             client.websocket_connect("/ws/signaling") as ws_c:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_a, \
+             client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_b, \
+             client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_c:
             _register(ws_a, "peer-a", model="llama3.1")
             _register(ws_b, "peer-b", model="llama3.1")
             _register(ws_c, "peer-c", model="phi3-mini")
@@ -68,9 +68,9 @@ def test_clusters_group_by_model() -> None:
 def test_clusters_edges_from_injected_jobs() -> None:
     _clear_buffer()
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_a, \
-             client.websocket_connect("/ws/signaling") as ws_b, \
-             client.websocket_connect("/ws/signaling") as ws_c:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_a, \
+             client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_b, \
+             client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_c:
             _register(ws_a, "peer-a", model="llama3.1")
             _register(ws_b, "peer-b", model="llama3.1")
             _register(ws_c, "peer-c", model="phi3-mini")
@@ -118,7 +118,7 @@ def test_clusters_edges_from_injected_jobs() -> None:
 def test_clusters_response_shape_matches_contract() -> None:
     _clear_buffer()
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_a:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_a:
             _register(ws_a, "peer-a", model="llama3.1")
             r = client.get("/clusters")
             assert r.status_code == 200

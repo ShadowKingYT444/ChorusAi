@@ -19,7 +19,7 @@ def _receive_until_not_presence(ws) -> dict:
 
 def test_discovery_registry_updates_on_connect_and_disconnect() -> None:
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_a:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_a:
             registered = _register(ws_a, "peer-a")
             assert registered["type"] == "registered"
             peers = client.get("/peers")
@@ -35,7 +35,7 @@ def test_discovery_registry_updates_on_connect_and_disconnect() -> None:
 
 def test_broadcast_plan_is_adaptive_and_deterministic() -> None:
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_a, client.websocket_connect("/ws/signaling") as ws_b:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_a, client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_b:
             _register(ws_a, "peer-a")
             _register(ws_b, "peer-b")
 
@@ -60,8 +60,8 @@ def test_broadcast_plan_is_adaptive_and_deterministic() -> None:
 
 def test_broadcast_job_relays_envelopes_to_connected_targets() -> None:
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_prompter, client.websocket_connect(
-            "/ws/signaling"
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_prompter, client.websocket_connect(
+            "/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token"
         ) as ws_peer:
             _register(ws_prompter, "prompter", model="qwen2.5:0.5b")
             _register(ws_peer, "peer-x", model="qwen2.5:0.5b")
@@ -90,7 +90,7 @@ def test_broadcast_job_relays_envelopes_to_connected_targets() -> None:
 
 def test_join_request_returns_mesh_and_known_snapshot() -> None:
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_a, client.websocket_connect("/ws/signaling") as ws_b:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_a, client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_b:
             _register(ws_a, "peer-a", model="qwen2.5:0.5b")
             ws_b.send_json(
                 {
@@ -110,8 +110,8 @@ def test_join_request_returns_mesh_and_known_snapshot() -> None:
 
 def test_job_ack_and_response_relay_back_to_prompter() -> None:
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws_prompter, client.websocket_connect(
-            "/ws/signaling"
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws_prompter, client.websocket_connect(
+            "/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token"
         ) as ws_peer:
             _register(ws_prompter, "prompter")
             _register(ws_peer, "peer-1")
@@ -164,7 +164,7 @@ def test_job_ack_and_response_relay_back_to_prompter() -> None:
 
 def test_set_address_updates_peer() -> None:
     with TestClient(app) as client:
-        with client.websocket_connect("/ws/signaling") as ws:
+        with client.websocket_connect("/ws/signaling?workspace_id=local-dev&token=chorus-local-dev-token") as ws:
             reg = _register(ws, "peer-addr")
             assert reg["type"] == "registered"
             ws.send_json({"type": "set_address", "address": "http://10.0.0.5:11434"})

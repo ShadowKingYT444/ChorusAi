@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile, W
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
+from orchestrator import billing
 from orchestrator.attachments import build_attachment_context, build_attachment_record, persist_upload
 from orchestrator.auth import require_workspace_http, require_workspace_websocket
 from orchestrator.broadcast_completions import post_chat_completion
@@ -75,6 +76,13 @@ _active_websockets: set[WebSocket] = set()
 # Buffer job_response payloads so the prompter can fetch missed ones after reconnecting.
 _job_response_buffer: dict[str, list[dict]] = {}
 _JOB_BUFFER_MAX = 500  # max responses stored per job
+
+
+def _drop_job_response_buffer(job_id: str) -> None:
+    _job_response_buffer.pop(job_id, None)
+
+
+job_store.on_terminal(_drop_job_response_buffer)
 
 DEFAULT_PERSONA_CATALOG = [
     "You are a skeptic. Challenge assumptions and list likely failure modes.",
@@ -592,6 +600,59 @@ async def get_job_responses(job_id: str, request: Request) -> dict:
     return {"job_id": job_id, "responses": _job_response_buffer.get(job_id, [])}
 
 
+@app.post("/jobs/quote")
+async def quote_job_route(payload: dict, request: Request) -> dict:
+    """Phase-1 shadow quote. No money moves, no chain call."""
+    require_workspace_http(request)
+    prompt = str(payload.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt_required")
+    agent_count = int(payload.get("agent_count") or 1)
+    models = payload.get("models") or ["default"]
+    if not isinstance(models, list) or not models:
+        raise HTTPException(status_code=400, detail="models_required")
+    # Rough token expectation — whitespace fallback until phase-2 tokenizer.
+    expected_in = max(1, len(prompt.split()))
+    expected_out = max(32, expected_in)
+    quote = billing.quote_job(
+        model_ids=[str(m) for m in models],
+        agent_count=agent_count,
+        expected_tokens_in=expected_in,
+        expected_tokens_out=expected_out,
+    )
+    import time as _t
+    job_id = str(uuid.uuid4())
+    expires_at = int(_t.time()) + 300
+    await job_store.create_payment(job_id, int(quote["total_uc"]))
+    return {**quote, "job_id": job_id, "expires_at": expires_at}
+
+
+@app.get("/jobs/{job_id}/settlement")
+async def get_job_settlement(job_id: str, request: Request) -> dict:
+    principal = require_workspace_http(request)
+    job = await job_store.get_job(job_id, workspace_id=principal.workspace_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job_not_found")
+    shares = await job_store.list_shares(job_id)
+    from orchestrator.billing import ComputeShare, split_payout
+    split = split_payout(
+        [
+            ComputeShare(
+                peer_id=str(r["peer_id"]),
+                wallet_address=r.get("wallet_address"),
+                cost_uc=int(r.get("compute_cost_uc") or 0),
+            )
+            for r in shares
+        ]
+    )
+    return {
+        "job_id": job_id,
+        "shares": shares,
+        "split": split,
+        "settlement_preview": job.settlement_preview,
+    }
+
+
 @app.get("/models", response_model=AvailableModelsResponse)
 async def list_available_models(request: Request) -> AvailableModelsResponse:
     require_workspace_http(request)
@@ -715,7 +776,9 @@ async def ws_job_events(websocket: WebSocket, job_id: str) -> None:
         return
 
     await websocket.accept()
+    subscribed = False
     queue, history = await job_store.subscribe(job_id)
+    subscribed = True
     try:
         for item in history:
             await websocket.send_json(item)
@@ -725,7 +788,8 @@ async def ws_job_events(websocket: WebSocket, job_id: str) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        await job_store.unsubscribe(job_id, queue)
+        if subscribed:
+            await job_store.unsubscribe(job_id, queue)
 
 
 @app.get("/peers", response_model=PeersResponse)
@@ -866,6 +930,12 @@ async def broadcast_invoke_completions(req: BroadcastInvokeRequest) -> dict[str,
 
 @app.websocket("/ws/signaling")
 async def ws_signaling(websocket: WebSocket) -> None:
+    try:
+        require_workspace_websocket(websocket)
+    except HTTPException as exc:
+        code = 4401 if exc.status_code == 401 else 4403
+        await _close_job_ws(websocket, code, str(exc.detail))
+        return
     await websocket.accept()
     async with _conn_lock:
         _active_websockets.add(websocket)

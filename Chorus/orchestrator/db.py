@@ -108,6 +108,32 @@ class ChorusDB:
                 shadow_credits_reserved INTEGER NOT NULL DEFAULT 0,
                 updated_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS job_payments (
+                job_id            TEXT PRIMARY KEY,
+                payer_wallet      TEXT,
+                quoted_amount_uc  INTEGER NOT NULL,
+                final_amount_uc   INTEGER,
+                platform_fee_uc   INTEGER,
+                tx_deposit        TEXT,
+                tx_settle         TEXT,
+                status            TEXT NOT NULL,
+                created_at        INTEGER NOT NULL,
+                funded_at         INTEGER,
+                settled_at        INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS payment_shares (
+                job_id            TEXT NOT NULL,
+                peer_id           TEXT NOT NULL,
+                wallet_address    TEXT,
+                round_index       INTEGER NOT NULL,
+                tokens_in         INTEGER NOT NULL,
+                tokens_out        INTEGER NOT NULL,
+                wall_ms           INTEGER NOT NULL,
+                compute_cost_uc   INTEGER NOT NULL,
+                signed_receipt    TEXT,
+                created_at        INTEGER NOT NULL,
+                PRIMARY KEY(job_id, peer_id, round_index)
+            );
             """
         )
         await self._ensure_job_column("workspace_id", "TEXT")
@@ -586,6 +612,119 @@ class ChorusDB:
         except Exception as exc:  # noqa: BLE001
             logger.warning("ready_check failed: %s", exc)
             return False
+
+    async def insert_payment(
+        self,
+        job_id: str,
+        quoted_amount_uc: int,
+        status: str = "quoted",
+    ) -> None:
+        if self._conn is None or self._lock is None:
+            return
+        try:
+            now = int(time.time())
+            async with self._lock:
+                await self._conn.execute(
+                    """
+                    INSERT OR IGNORE INTO job_payments
+                      (job_id, quoted_amount_uc, status, created_at)
+                    VALUES (?,?,?,?)
+                    """,
+                    (job_id, int(quoted_amount_uc), status, now),
+                )
+                await self._conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("insert_payment failed: %s", exc)
+
+    async def insert_share(
+        self,
+        *,
+        job_id: str,
+        peer_id: str,
+        wallet: str | None,
+        round_index: int,
+        tokens_in: int,
+        tokens_out: int,
+        wall_ms: int,
+        cost_uc: int,
+        signed_receipt: str | None,
+    ) -> None:
+        if self._conn is None or self._lock is None:
+            return
+        try:
+            now = int(time.time())
+            async with self._lock:
+                await self._conn.execute(
+                    """
+                    INSERT OR REPLACE INTO payment_shares
+                      (job_id, peer_id, wallet_address, round_index, tokens_in,
+                       tokens_out, wall_ms, compute_cost_uc, signed_receipt, created_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        job_id, peer_id, wallet, int(round_index),
+                        int(tokens_in), int(tokens_out), int(wall_ms),
+                        int(cost_uc), signed_receipt, now,
+                    ),
+                )
+                await self._conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("insert_share failed: %s", exc)
+
+    async def fetch_shares(self, job_id: str) -> list[dict[str, Any]]:
+        if self._conn is None:
+            return []
+        try:
+            async with self._conn.execute(
+                """
+                SELECT peer_id, wallet_address, round_index, tokens_in, tokens_out,
+                       wall_ms, compute_cost_uc, signed_receipt, created_at
+                  FROM payment_shares WHERE job_id=? ORDER BY round_index, peer_id
+                """,
+                (job_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+            return [
+                {
+                    "peer_id": r[0],
+                    "wallet_address": r[1],
+                    "round_index": r[2],
+                    "tokens_in": r[3],
+                    "tokens_out": r[4],
+                    "wall_ms": r[5],
+                    "compute_cost_uc": r[6],
+                    "signed_receipt": r[7],
+                    "created_at": r[8],
+                }
+                for r in rows
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("fetch_shares failed: %s", exc)
+            return []
+
+    async def finalize_payment(
+        self,
+        job_id: str,
+        final_amount_uc: int,
+        platform_fee_uc: int,
+    ) -> None:
+        if self._conn is None or self._lock is None:
+            return
+        try:
+            now = int(time.time())
+            async with self._lock:
+                await self._conn.execute(
+                    """
+                    UPDATE job_payments
+                       SET final_amount_uc=?, platform_fee_uc=?, status='settled',
+                           settled_at=?
+                     WHERE job_id=?
+                    """,
+                    (int(final_amount_uc), int(platform_fee_uc), now, job_id),
+                )
+                await self._conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("finalize_payment failed: %s", exc)
 
     async def close(self) -> None:
         try:

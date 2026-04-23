@@ -104,8 +104,10 @@ async def persist_upload(upload: UploadFile, workspace_id: str) -> PreparedAttac
     workspace_dir = root / workspace_id
     workspace_dir.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.NamedTemporaryFile(delete=False, dir=workspace_dir, suffix=Path(filename).suffix) as tmp:
-        temp_path = Path(tmp.name)
+    tmp = tempfile.NamedTemporaryFile(delete=False, dir=workspace_dir, suffix=Path(filename).suffix)
+    temp_path = Path(tmp.name)
+    wrote_successfully = False
+    try:
         digest = hashlib.sha256()
         size_bytes = 0
         while True:
@@ -114,11 +116,14 @@ async def persist_upload(upload: UploadFile, workspace_id: str) -> PreparedAttac
                 break
             size_bytes += len(chunk)
             if size_bytes > _max_upload_bytes():
-                tmp.close()
-                temp_path.unlink(missing_ok=True)
                 raise HTTPException(status_code=413, detail="attachment_too_large")
             digest.update(chunk)
             tmp.write(chunk)
+        wrote_successfully = True
+    finally:
+        tmp.close()
+        if not wrote_successfully:
+            temp_path.unlink(missing_ok=True)
 
     attachment_id = digest.hexdigest()[:24]
     final_dir = workspace_dir / attachment_id
