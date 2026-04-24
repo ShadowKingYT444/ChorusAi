@@ -45,6 +45,8 @@ type PathMode = 'local' | 'tunnel'
 type TunnelProvider = 'ngrok' | 'cloudflared'
 
 const SETUP_TUNNEL_URL_KEY = 'chorus_setup_tunnel_url'
+const OLLAMA_PORT_KEY = 'chorus_ollama_port'
+const DEFAULT_OLLAMA_PORT = '11434'
 
 interface ModelChoice {
   id: string
@@ -80,11 +82,13 @@ function writeLocalStorage(key: string, value: string): void {
   else localStorage.removeItem(key)
 }
 
-function deriveModelPublicUrl(mode: PathMode, lanIp: string, tunnelUrl: string): string {
+function deriveModelPublicUrl(mode: PathMode, lanIp: string, tunnelUrl: string, ollamaPort: string): string {
   if (mode === 'tunnel') return tunnelUrl.trim()
   const raw = lanIp.trim()
   if (!raw) return ''
-  return /^https?:\/\//i.test(raw) ? raw : `http://${raw}:11434`
+  if (/^https?:\/\//i.test(raw)) return raw
+  const port = ollamaPort.trim() || DEFAULT_OLLAMA_PORT
+  return `http://${raw}:${port}`
 }
 
 function isLocalModelBase(raw: string): boolean {
@@ -105,6 +109,7 @@ export default function SetupPage() {
   const [direction, setDirection] = useState<1 | -1>(1)
   const [model, setModel] = useState(MODEL_CHOICES[1].id)
   const [lanIp, setLanIp] = useState('')
+  const [ollamaPort, setOllamaPort] = useState(DEFAULT_OLLAMA_PORT)
   const [tunnelProvider, setTunnelProvider] = useState<TunnelProvider>('ngrok')
   const [tunnelUrl, setTunnelUrl] = useState('')
   const [testOk, setTestOk] = useState(false)
@@ -134,6 +139,8 @@ export default function SetupPage() {
 
     const savedIp = getSavedOllamaIp()
     if (savedIp) setLanIp(savedIp)
+    const savedPort = readLocalStorage(OLLAMA_PORT_KEY)
+    if (savedPort) setOllamaPort(savedPort)
 
     const override = getOrchestratorBaseOverride()
     const envBase = process.env.NEXT_PUBLIC_ORCHESTRATOR_BASE_URL?.trim() ?? ''
@@ -158,6 +165,10 @@ export default function SetupPage() {
   }, [lanIp])
 
   useEffect(() => {
+    writeLocalStorage(OLLAMA_PORT_KEY, ollamaPort.trim() || DEFAULT_OLLAMA_PORT)
+  }, [ollamaPort])
+
+  useEffect(() => {
     writeWorkspaceId(workspaceId)
   }, [workspaceId])
 
@@ -177,7 +188,7 @@ export default function SetupPage() {
       return
     }
     setTestOk(false)
-  }, [mode, lanIp, tunnelUrl, model])
+  }, [mode, lanIp, tunnelUrl, model, ollamaPort])
 
   const steps = useMemo(() => {
     const base = [
@@ -214,8 +225,8 @@ export default function SetupPage() {
     const normalized = trimmed ? normalizeOrchestratorBase(trimmed) : null
     setOrchestratorBaseOverride(normalized)
     if (normalized) setOrchestratorBase(normalized)
-    writeLocalStorage(MODEL_PUBLIC_URL_KEY, deriveModelPublicUrl(mode, lanIp, tunnelUrl))
-  }, [lanIp, mode, orchestratorBase, tunnelUrl])
+    writeLocalStorage(MODEL_PUBLIC_URL_KEY, deriveModelPublicUrl(mode, lanIp, tunnelUrl, ollamaPort))
+  }, [lanIp, mode, ollamaPort, orchestratorBase, tunnelUrl])
 
   useEffect(() => {
     setProbePhase('idle')
@@ -308,32 +319,35 @@ export default function SetupPage() {
     },
   }
 
+  const ollamaPortValue = ollamaPort.trim() || DEFAULT_OLLAMA_PORT
+  const localOllamaBase = `http://localhost:${ollamaPortValue}`
+
   const networkCommandsLan: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: '# Stop any running Ollama instance first\npkill -x Ollama || true\npkill -x ollama || true\nOLLAMA_HOST=0.0.0.0 ollama serve',
+      code: `# Stop any running Ollama instance first\npkill -x Ollama || true\npkill -x ollama || true\nOLLAMA_HOST=0.0.0.0:${ollamaPortValue} ollama serve`,
       note: TRAY_WARNING,
     },
     windows: {
-      code: 'Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\nwsl -e sh -lc "pkill -f ollama || true" 2>$null\nwsl --shutdown 2>$null\n$env:OLLAMA_HOST = "0.0.0.0"\nollama serve',
-      note: `${TRAY_WARNING} If port 11434 is still busy, WSL may be holding it through wslrelay.exe. The commands above shut that down too.`,
+      code: `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\nwsl -e sh -lc "pkill -f ollama || true" 2>$null\nwsl --shutdown 2>$null\n$env:OLLAMA_HOST = "0.0.0.0:${ollamaPortValue}"\nollama serve`,
+      note: `${TRAY_WARNING} If port ${ollamaPortValue} is forbidden, run \`netsh interface ipv4 show excludedportrange protocol=tcp\`. If the port is inside an excluded range, pick a free port such as 11500 and use the full URL in Chorus setup.`,
     },
     linux: {
-      code: 'sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_HOST=0.0.0.0"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama',
-      note: 'Or for a one-off: `OLLAMA_HOST=0.0.0.0 ollama serve`.',
+      code: `sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_HOST=0.0.0.0:${ollamaPortValue}"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama`,
+      note: `Or for a one-off: \`OLLAMA_HOST=0.0.0.0:${ollamaPortValue} ollama serve\`.`,
     },
   }
 
   const networkCommandsTunnel: Record<OsKey, { code: string; note?: string }> = {
     macos: {
-      code: `# Terminal #1\npkill -x Ollama || true\npkill -x ollama || true\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1 ollama serve`,
+      code: `# Terminal #1\npkill -x Ollama || true\npkill -x ollama || true\nOLLAMA_ORIGINS="${origin}" OLLAMA_HOST=127.0.0.1:${ollamaPortValue} ollama serve`,
       note: TRAY_WARNING,
     },
     windows: {
-      code: `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\nwsl -e sh -lc "pkill -f ollama || true" 2>$null\nwsl --shutdown 2>$null\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1"\nollama serve`,
-      note: `${TRAY_WARNING} If you still see a bind error, run \`Get-NetTCPConnection -LocalPort 11434 -State Listen\` and look for wslrelay.exe.`,
+      code: `Get-Process ollama -ErrorAction SilentlyContinue | Stop-Process -Force\nwsl -e sh -lc "pkill -f ollama || true" 2>$null\nwsl --shutdown 2>$null\n$env:OLLAMA_ORIGINS = "${origin}"\n$env:OLLAMA_HOST = "127.0.0.1:${ollamaPortValue}"\nollama serve`,
+      note: `${TRAY_WARNING} If you still see a bind error, run \`netsh interface ipv4 show excludedportrange protocol=tcp\` and check whether ${ollamaPortValue} is reserved. If it is, change the port here and in your tunnel command.`,
     },
     linux: {
-      code: `sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_ORIGINS=${origin}"\n#   Environment="OLLAMA_HOST=127.0.0.1"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama`,
+      code: `sudo systemctl stop ollama || true\nsudo systemctl edit ollama.service\n# add under [Service]:\n#   Environment="OLLAMA_ORIGINS=${origin}"\n#   Environment="OLLAMA_HOST=127.0.0.1:${ollamaPortValue}"\nsudo systemctl daemon-reload\nsudo systemctl restart ollama`,
     },
   }
 
@@ -450,6 +464,17 @@ export default function SetupPage() {
             : `Whitelist ${origin} so the browser can reach the tunneled endpoint.`
         }
       >
+        <label style={fieldLabelStyle}>Ollama port</label>
+        <input
+          value={ollamaPort}
+          onChange={(e) => setOllamaPort(e.target.value.replace(/[^0-9]/g, '').slice(0, 5) || DEFAULT_OLLAMA_PORT)}
+          placeholder="11434"
+          inputMode="numeric"
+          style={inputStyle}
+        />
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.52)', lineHeight: 1.45, marginBottom: '0.75rem' }}>
+          If Windows blocks <code>11434</code> with “forbidden by access permissions,” try <code>11500</code> and paste the full URL such as <code>http://127.0.0.1:11500</code> when testing.
+        </div>
         <OsTabs
           value={os}
           onChange={setOs}
@@ -460,11 +485,11 @@ export default function SetupPage() {
           }}
         />
         {os === 'windows' && (
-          <Notice kind="info" title="Windows + WSL note">
-            If <code>ollama serve</code> says port <code>11434</code> is already in use even after killing
-            <code>ollama.exe</code>, WSL is usually the real listener. That shows up as
-            <code>wslrelay.exe</code> in <code>Get-NetTCPConnection</code>. Run the setup command exactly as shown
-            so it clears both Windows Ollama and the WSL-held port before restarting.
+          <Notice kind="info" title="Windows port troubleshooting">
+            If <code>ollama serve</code> says port <code>{ollamaPortValue}</code> is forbidden even when nothing is listening,
+            Windows may have reserved that port. Run <code>netsh interface ipv4 show excludedportrange protocol=tcp</code>;
+            if the port is inside an excluded range, switch to a free port like <code>11500</code>. If it is merely in use,
+            <code>wslrelay.exe</code> may be holding it; the setup command clears both Windows Ollama and WSL before restarting.
           </Notice>
         )}
       </StepShell>
@@ -502,8 +527,8 @@ export default function SetupPage() {
         <CodeBlock
           code={
             tunnelProvider === 'ngrok'
-              ? 'ngrok http 11434 --host-header=localhost:11434'
-              : 'cloudflared tunnel --url http://localhost:11434'
+              ? `ngrok http ${ollamaPortValue} --host-header=localhost:${ollamaPortValue}`
+              : `cloudflared tunnel --url ${localOllamaBase}`
           }
           label="shell"
         />
@@ -537,7 +562,7 @@ export default function SetupPage() {
               spellCheck={false}
               style={inputStyle}
             />
-            <ConnectionTest mode="lan" target={lanIp} model={model} onResult={setTestOk} />
+            <ConnectionTest mode="lan" target={lanIp} model={model} ollamaPort={ollamaPortValue} onResult={setTestOk} />
           </>
         ) : (
           <>
@@ -550,7 +575,7 @@ export default function SetupPage() {
               spellCheck={false}
               style={inputStyle}
             />
-            <ConnectionTest mode="tunnel" target={tunnelUrl} model={model} onResult={setTestOk} />
+            <ConnectionTest mode="tunnel" target={tunnelUrl} model={model} ollamaPort={ollamaPortValue} onResult={setTestOk} />
           </>
         )}
       </StepShell>

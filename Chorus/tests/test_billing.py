@@ -38,32 +38,44 @@ def test_compute_cost_uc_ignores_wall_ms():
 
 
 def test_quote_job_applies_platform_fee_bps():
-    # Single model, single agent, 2M in + 1M out on default: 200 + 300 = 500 uc.
-    q = quote_job(["default"], 1, 2_000_000, 1_000_000)
-    assert q["subtotal_uc"] == 500
-    # 0.5% of 500 = 2.5 → floor = 2.
-    assert q["platform_fee_uc"] == 2
-    assert (500 * PLATFORM_FEE_BPS) // 10_000 == 2
+    # Single model, single agent, 100M in + 50M out on default: 10,000 + 15,000 = 25,000 uc.
+    q = quote_job(["default"], 1, 100_000_000, 50_000_000)
+    assert q["subtotal_uc"] == 25_000
+    # 0.5% of 25,000 = 125.
+    assert q["platform_fee_uc"] == 125
+    assert (25_000 * PLATFORM_FEE_BPS) // 10_000 == 125
     assert q["total_uc"] == q["subtotal_uc"] + q["platform_fee_uc"]
 
 
-def test_quote_job_scales_with_agent_count():
-    q1 = quote_job(["default"], 1, 1_000_000, 1_000_000)
-    q5 = quote_job(["default"], 5, 1_000_000, 1_000_000)
-    # 5 agents ⇒ 5× the subtotal.
+def test_quote_job_scales_with_agent_count_and_rounds():
+    q1 = quote_job(["default"], 1, 100_000_000, 100_000_000)
+    q5 = quote_job(["default"], 5, 100_000_000, 100_000_000)
+    q5r3 = quote_job(["default"], 5, 100_000_000, 100_000_000, rounds=3)
+    # 5 agents ⇒ 5× the subtotal; 3 rounds ⇒ another 3×.
     assert q5["subtotal_uc"] == 5 * q1["subtotal_uc"]
+    assert q5r3["subtotal_uc"] == 3 * q5["subtotal_uc"]
     # Unknown model rolls into "default".
-    q_unknown = quote_job(["does-not-exist"], 1, 1_000_000, 1_000_000)
+    q_unknown = quote_job(["does-not-exist"], 1, 100_000_000, 100_000_000)
     assert q_unknown["subtotal_uc"] == q1["subtotal_uc"]
 
 
+def test_quote_job_applies_minimum_billable_subtotal_for_non_empty_work():
+    """Normal short prompts should not quote to zero just because token math is tiny."""
+    q_short = quote_job(["default"], 1, 5, 32)
+    q_medium = quote_job(["default"], 3, 500, 500)
+
+    assert q_short["subtotal_uc"] == 10_000
+    assert q_short["platform_fee_uc"] == 50
+    assert q_short["total_uc"] == 10_050
+    assert q_medium["subtotal_uc"] >= q_short["subtotal_uc"]
+
+    q_empty = quote_job(["default"], 1, 0, 0)
+    assert q_empty["subtotal_uc"] == 0
+    assert q_empty["platform_fee_uc"] == 0
+
+
 def test_platform_fee_floor_of_1_uc():
-    """Very small subtotals still incur a 1 uc fee (never 0 when subtotal > 0)."""
-    # 100 tokens each side on default ⇒ subtotal = 0.
-    q_zero = quote_job(["default"], 1, 100, 100)
-    assert q_zero["subtotal_uc"] == 0
-    assert q_zero["platform_fee_uc"] == 0
-    # Tiny positive subtotal — manually construct via split_payout.
+    """Very small positive settlement subtotals still incur a 1 uc fee."""
     split = split_payout([ComputeShare(peer_id="p1", wallet_address=None, cost_uc=10)])
     assert split["subtotal_uc"] == 10
     # 0.5% of 10 = 0.05 → floored to 0, but floor-min kicks in → 1.

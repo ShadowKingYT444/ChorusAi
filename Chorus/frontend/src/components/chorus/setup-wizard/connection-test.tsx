@@ -28,6 +28,7 @@ interface Props {
   /** For LAN mode: a bare LAN IP (e.g. `192.168.1.10`) or full URL. For tunnel: the https tunnel URL. */
   target: string
   model: string
+  ollamaPort?: string
   onResult?: (ok: boolean) => void
 }
 
@@ -58,7 +59,7 @@ function extractCompletionText(raw: string): string {
   }
 }
 
-export function ConnectionTest({ mode, target, model, onResult }: Props) {
+export function ConnectionTest({ mode, target, model, ollamaPort = '11434', onResult }: Props) {
   const [phase, setPhase] = useState<TestPhase>('idle')
   const [message, setMessage] = useState<string>('')
   const [tip, setTip] = useState<string>('')
@@ -93,7 +94,8 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
 
     try {
       if (mode === 'lan') {
-        const hostForBase = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}:11434`
+        const port = ollamaPort.trim() || '11434'
+        const hostForBase = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}:${port}`
         let host: string
         let completionUrl: string
         try {
@@ -120,7 +122,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
             [
               'You are on a deployed Chorus instance - the connection test runs on a remote server that cannot reach your local machine.',
               'To connect your local Ollama, go back and select "Remote access via tunnel", then use ngrok or cloudflared to give Ollama a public URL.',
-              'Run: ngrok http 11434 - then paste the https URL it gives you.',
+              `Run: ngrok http ${ollamaPort.trim() || '11434'} --host-header=localhost:${ollamaPort.trim() || '11434'} - then paste the https URL it gives you.`,
             ].join(' '),
           )
           onResult?.(false)
@@ -147,16 +149,16 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
                 ? [
                     'You chose the same PC path, so this should work without ngrok.',
                     '1. Make sure Ollama is open on this computer.',
-                    '2. In PowerShell run: `Invoke-WebRequest http://127.0.0.1:11434/api/tags`.',
+                    `2. In PowerShell run: \`Invoke-WebRequest http://127.0.0.1:${ollamaPort.trim() || '11434'}/api/tags\`.`,
                     '3. If that fails, Ollama is not running yet. Start it and retry.',
                     '4. If it works, retry this test.',
                   ].join(' ')
                 : [
                     `The Next server could not open ${completionUrl}.`,
-                    '1. On the Ollama machine, run: `Invoke-WebRequest http://127.0.0.1:11434/api/tags`.',
+                    `1. On the Ollama machine, run: \`Invoke-WebRequest http://127.0.0.1:${ollamaPort.trim() || '11434'}/api/tags\`.`,
                     '2. If that works, expose Ollama to your LAN with `OLLAMA_HOST=0.0.0.0`, then fully quit and relaunch Ollama.',
-                    '3. On the machine running `npm run dev`, run: `Invoke-WebRequest http://YOUR-IP:11434/api/tags`.',
-                    '4. If that times out, fix Windows Firewall for TCP 11434 or use `127.0.0.1` if Chorus and Ollama are on the same PC.',
+                    `3. On the machine running \`npm run dev\`, run: \`Invoke-WebRequest http://YOUR-IP:${ollamaPort.trim() || '11434'}/api/tags\`.`,
+                    `4. If that times out, fix Windows Firewall for TCP ${ollamaPort.trim() || '11434'} or use \`127.0.0.1\` if Chorus and Ollama are on the same PC.`,
                   ].join(' '),
             )
           }
@@ -206,7 +208,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
           [
             'Run ngrok or cloudflared on the Ollama machine and paste the public URL it prints.',
             'Examples: `https://abc-123.ngrok-free.app` or `https://random-words.trycloudflare.com`.',
-            'Do not paste `http://127.0.0.1:11434` or a `192.168.x.x` address in tunnel mode.',
+            `Do not paste \`http://127.0.0.1:${ollamaPort.trim() || '11434'}\` or a \`192.168.x.x\` address in tunnel mode.`,
           ].join(' '),
         )
         onResult?.(false)
@@ -229,8 +231,8 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
                 proxyContext ? `Proxy note: ${proxyContext}` : '',
                 'The browser reached your tunnel, but Ollama still rejected the request.',
                 directRes.status === 403
-                  ? 'HTTP 403 almost always means ngrok is not rewriting the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 - Ollama blocks tunnel hostnames by default to prevent DNS rebinding.'
-                  : 'Confirm Ollama is running, the tunnel points at port 11434, and OLLAMA_ORIGINS includes this Chorus UI origin.',
+                  ? `HTTP 403 almost always means ngrok is not rewriting the Host header. Restart ngrok with: ngrok http ${ollamaPort.trim() || '11434'} --host-header=localhost:${ollamaPort.trim() || '11434'} - Ollama blocks tunnel hostnames by default to prevent DNS rebinding.`
+                  : `Confirm Ollama is running, the tunnel points at port ${ollamaPort.trim() || '11434'}, and OLLAMA_ORIGINS includes this Chorus UI origin.`,
               ]
                 .filter(Boolean)
                 .join(' '),
@@ -256,7 +258,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
             [
               proxyContext ? `Proxy note: ${proxyContext}` : '',
               'The direct browser call failed, which usually means OLLAMA_ORIGINS is missing this Chorus UI origin or the tunnel is down.',
-              'Restart Ollama with OLLAMA_ORIGINS set to this site URL, then confirm the tunnel is still forwarding to localhost:11434.',
+              `Restart Ollama with OLLAMA_ORIGINS set to this site URL, then confirm the tunnel is still forwarding to localhost:${ollamaPort.trim() || '11434'}.`,
             ]
               .filter(Boolean)
               .join(' '),
@@ -282,7 +284,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
         setMessage(`HTTP ${res.status}: ${proxyError}`)
         if (res.status === 403) {
           setTip(
-            'Ollama returned 403. This is DNS-rebinding protection - ngrok must rewrite the Host header. Restart ngrok with: ngrok http 11434 --host-header=localhost:11434 (paste the new URL above, then retest).',
+            `Ollama returned 403. This is DNS-rebinding protection - ngrok must rewrite the Host header. Restart ngrok with: ngrok http ${ollamaPort.trim() || '11434'} --host-header=localhost:${ollamaPort.trim() || '11434'} (paste the new URL above, then retest).`,
           )
         }
         onResult?.(false)
@@ -308,7 +310,7 @@ export function ConnectionTest({ mode, target, model, onResult }: Props) {
                 '2. Confirm Ollama is running on the same machine.',
                 '3. Try opening your tunnel URL in a new browser tab to verify it loads.',
               ].join(' ')
-            : 'The Next server could not reach Ollama. Check OLLAMA_HOST=0.0.0.0 and firewall for port 11434.',
+            : `The Next server could not reach Ollama. Check OLLAMA_HOST=0.0.0.0:${ollamaPort.trim() || '11434'} and firewall for port ${ollamaPort.trim() || '11434'}.`,
         )
       }
       setSavedModelVerified(false)

@@ -18,6 +18,7 @@ import {
   type AvailableModelEntry,
   createJob,
   getAvailableModels,
+  getEffectiveOrchestratorBase,
   getSavedModelName,
   isOrchestratorConfigured,
   registerJobAgents,
@@ -26,6 +27,8 @@ import {
 import { writeSimulationSession } from '@/lib/runtime/session'
 import { getChat, upsertChat } from '@/lib/runtime/chat-history'
 import { useJobWebSocket, type JobLine } from '@/lib/runtime/use-job-websocket'
+import { readWorkspaceId, readWorkspaceToken } from '@/lib/workspace-config'
+import { useJobPayment } from '@/lib/solana/use-job-payment'
 
 const ACTIVE_CHAT_KEY = 'chorus_active_chat_id'
 const DEFAULT_TITLE = 'New review'
@@ -213,6 +216,15 @@ export function ChorusAppShell() {
   const currentTurnIdRef = useRef<string | null>(null)
   const completionModelTouchedRef = useRef(false)
   const jobWs = useJobWebSocket(currentJobId)
+  const paymentDeps = useMemo(
+    () => ({
+      orchestratorBaseUrl: getEffectiveOrchestratorBase() ?? '',
+      workspaceId: readWorkspaceId(),
+      workspaceToken: readWorkspaceToken(),
+    }),
+    [],
+  )
+  const jobPayment = useJobPayment(paymentDeps)
 
   const readyPeerCount = status.peers.filter((peer) => Boolean(peer.address?.trim())).length
   const fallbackModels = useMemo(() => buildModelOptions(status.peers), [status.peers])
@@ -381,6 +393,25 @@ export function ChorusAppShell() {
 
     try {
       const targetModel = completionModel.trim() || null
+      let paymentJobId: string | null = null
+      let payout = 0
+      if (jobPayment.enabled) {
+        if (!jobPayment.connected) {
+          throw new Error('Connect your wallet before launching a paid review.')
+        }
+        const quoteModels = targetModel
+          ? [targetModel]
+          : availableModels.map((model) => model.model_id).filter(Boolean).slice(0, Math.max(1, voices))
+        const quote = await jobPayment.quote(
+          prompt,
+          voices,
+          quoteModels.length > 0 ? quoteModels : ['default'],
+          rounds,
+        )
+        await jobPayment.payAndConfirm(quote)
+        paymentJobId = quote.job_id
+        payout = quote.total_uc / 1_000_000
+      }
 
       const created = await createJob({
         context: [
@@ -392,10 +423,11 @@ export function ChorusAppShell() {
         prompt,
         agent_count: voices,
         rounds,
-        payout: 0,
+        payout,
         embedding_model_version: 'custom-review',
         completion_model: targetModel,
         attachment_ids: attachments.map((attachment) => attachment.attachment_id),
+        payment_job_id: paymentJobId,
       } as Parameters<typeof createJob>[0])
 
       const registration = await registerJobAgents(created.job_id, {
@@ -408,7 +440,7 @@ export function ChorusAppShell() {
         prompt,
         agentCount: slotIds.length,
         rounds,
-        bounty: 0,
+        bounty: payout,
         jobId: created.job_id,
         mode: 'backend',
         createdAt: new Date().toISOString(),
@@ -456,7 +488,7 @@ export function ChorusAppShell() {
     } finally {
       setSending(false)
     }
-  }, [draft, sending, uploadingAttachments, attachments, completionModel, status.peers, voices, rounds])
+  }, [draft, sending, uploadingAttachments, attachments, completionModel, status.peers, voices, rounds, jobPayment, availableModels])
 
   const hasTurns = turns.length > 0
   const openTrace = useCallback(() => router.push('/app'), [router])

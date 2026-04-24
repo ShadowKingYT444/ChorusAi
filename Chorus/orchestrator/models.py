@@ -224,6 +224,7 @@ class JobSpec(BaseModel):
     template_id: str | None = None
     attachment_ids: list[str] = Field(default_factory=list)
     completion_model: str | None = None
+    payment_job_id: str | None = None
 
 
 class CreateJobRequest(JobSpec):

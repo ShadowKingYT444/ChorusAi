@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 PLATFORM_FEE_BPS = 50  # 0.5 %
+MIN_QUOTE_SUBTOTAL_UC = 10_000  # $0.01 minimum billable job subtotal
 _BPS_DENOM = 10_000
 _MTOK = 1_000_000
 
@@ -73,6 +74,7 @@ def quote_job(
     agent_count: int,
     expected_tokens_in: int,
     expected_tokens_out: int,
+    rounds: int = 1,
 ) -> dict:
     """Pre-flight quote across an ensemble of models.
 
@@ -80,13 +82,16 @@ def quote_job(
     the per-model-round cost because each agent slot incurs one inference.
     """
     agents = max(1, int(agent_count))
+    round_count = max(1, int(rounds))
     if not model_ids:
         model_ids = ["default"]
     per_agent = 0
     for mid in model_ids:
         per_agent += compute_cost_uc(mid, expected_tokens_in, expected_tokens_out, 0)
     # Average across the ensemble (each agent runs one model, not all).
-    subtotal = (per_agent * agents) // max(1, len(model_ids))
+    subtotal = (per_agent * agents * round_count) // max(1, len(model_ids))
+    if expected_tokens_in > 0 or expected_tokens_out > 0:
+        subtotal = max(subtotal, MIN_QUOTE_SUBTOTAL_UC)
     fee = _platform_fee(subtotal)
     return {
         "subtotal_uc": subtotal,

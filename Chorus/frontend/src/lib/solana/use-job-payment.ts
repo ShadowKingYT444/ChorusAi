@@ -49,11 +49,11 @@ export function useJobPayment(deps: Deps) {
   const enabled = PAYMENT_ENABLED
 
   const quote = useCallback(
-    async (prompt: string, agentCount: number, models: string[]): Promise<Quote> => {
+    async (prompt: string, agentCount: number, models: string[], rounds = 1): Promise<Quote> => {
       const res = await fetch(`${deps.orchestratorBaseUrl}/jobs/quote`, {
         method: 'POST',
         headers: authHeaders(deps),
-        body: JSON.stringify({ prompt, agent_count: agentCount, models }),
+        body: JSON.stringify({ prompt, agent_count: agentCount, models, rounds }),
       })
       if (!res.ok) throw new Error(`quote_failed: ${res.status} ${await res.text()}`)
       return (await res.json()) as Quote

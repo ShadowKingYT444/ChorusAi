@@ -172,6 +172,7 @@ export interface CreateJobRequest {
   embedding_model_version?: string | null
   completion_model?: string | null
   attachment_ids?: string[] | null
+  payment_job_id?: string | null
 }
 
 export interface CreateJobResponse {

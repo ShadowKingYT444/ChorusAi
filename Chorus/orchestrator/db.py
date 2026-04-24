@@ -753,24 +753,26 @@ class ChorusDB:
         job_id: str,
         final_amount_uc: int,
         platform_fee_uc: int,
-    ) -> None:
+    ) -> bool:
         if self._conn is None or self._lock is None:
-            return
+            return False
         try:
             now = int(time.time())
             async with self._lock:
-                await self._conn.execute(
+                cur = await self._conn.execute(
                     """
                     UPDATE job_payments
                        SET final_amount_uc=?, platform_fee_uc=?, status='settled',
                            settled_at=?
-                     WHERE job_id=?
+                     WHERE job_id=? AND status='funded' AND funded_at IS NOT NULL
                     """,
                     (int(final_amount_uc), int(platform_fee_uc), now, job_id),
                 )
                 await self._conn.commit()
+                return cur.rowcount == 1
         except Exception as exc:  # noqa: BLE001
             logger.warning("finalize_payment failed: %s", exc)
+            return False
 
     async def close(self) -> None:
         try:

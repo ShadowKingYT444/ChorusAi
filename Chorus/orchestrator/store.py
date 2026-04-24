@@ -201,16 +201,20 @@ class JobStore:
         req: CreateJobRequest | JobSpec,
         *,
         workspace_id: str = "local-dev",
+        job_id: str | None = None,
     ) -> JobRecord:
         spec = req if isinstance(req, JobSpec) else JobSpec.model_validate(req.model_dump())
         shadow_credit_cost = int(spec.agent_count * spec.rounds)
+        resolved_job_id = (job_id or "").strip() or str(uuid.uuid4())
         job = JobRecord(
-            job_id=str(uuid.uuid4()),
+            job_id=resolved_job_id,
             workspace_id=workspace_id,
             spec=spec,
             shadow_credit_cost=shadow_credit_cost,
         )
         async with self._lock:
+            if resolved_job_id in self._jobs:
+                raise ValueError("job already exists")
             self._jobs[job.job_id] = job
             usage = self._workspace_usage[workspace_id]
             usage["jobs_created"] += 1
@@ -417,9 +421,11 @@ class JobStore:
         ]
         split = split_payout(shares)
         if self._db is not None:
-            await self._db.finalize_payment(
+            split["settled"] = await self._db.finalize_payment(
                 job_id,
                 final_amount_uc=int(split["subtotal_uc"]),
                 platform_fee_uc=int(split["platform_fee_uc"]),
             )
+        else:
+            split["settled"] = False
         return split

@@ -142,6 +142,18 @@ def _persona_index(peer_id: str, job_id: str, size: int) -> int:
     return int.from_bytes(digest[:8], "big") % size
 
 
+def _job_payment_required() -> bool:
+    raw = os.getenv("ORC_REQUIRE_JOB_PAYMENT", "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        from orchestrator.solana_client import chain_enabled
+
+        return chain_enabled()
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _make_plan(
     *,
     target_peer_ids: list[str],
@@ -514,7 +526,29 @@ async def create_job(req: CreateJobRequest, request: Request) -> CreateJobRespon
                 f"{attachment_context}"
             ).strip()
         effective_req = req.model_copy(update={"context": merged_context})
-    job = await job_store.create_job(effective_req, workspace_id=principal.workspace_id)
+    payment_job_id = (effective_req.payment_job_id or "").strip()
+    requested_payout = float(effective_req.payout or 0.0)
+    if requested_payout > 0 and _job_payment_required():
+        if not payment_job_id:
+            raise HTTPException(status_code=402, detail="payment_required")
+        payment = await job_store.get_payment(payment_job_id)
+        if payment is None:
+            raise HTTPException(status_code=404, detail="quote_not_found")
+        if payment.get("status") != "funded" or payment.get("funded_at") is None:
+            raise HTTPException(status_code=402, detail="payment_not_funded")
+        requested_amount_uc = int(round(requested_payout * 1_000_000))
+        quoted_amount_uc = int(payment.get("quoted_amount_uc") or 0)
+        if abs(requested_amount_uc - quoted_amount_uc) > 1:
+            raise HTTPException(status_code=400, detail="payment_amount_mismatch")
+
+    try:
+        job = await job_store.create_job(
+            effective_req,
+            workspace_id=principal.workspace_id,
+            job_id=payment_job_id or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     METRICS.inc("shadow_credits_reserved_total", float(job.shadow_credit_cost))
     return CreateJobResponse(
         job_id=job.job_id,
@@ -608,6 +642,7 @@ async def quote_job_route(payload: dict, request: Request) -> dict:
     if not prompt:
         raise HTTPException(status_code=400, detail="prompt_required")
     agent_count = int(payload.get("agent_count") or 1)
+    rounds = int(payload.get("rounds") or 1)
     models = payload.get("models") or ["default"]
     if not isinstance(models, list) or not models:
         raise HTTPException(status_code=400, detail="models_required")
@@ -619,6 +654,7 @@ async def quote_job_route(payload: dict, request: Request) -> dict:
         agent_count=agent_count,
         expected_tokens_in=expected_in,
         expected_tokens_out=expected_out,
+        rounds=rounds,
     )
     import hashlib
     import time as _t

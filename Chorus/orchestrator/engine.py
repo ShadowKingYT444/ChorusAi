@@ -91,7 +91,9 @@ class RoundEngine:
             job.status = JobStatus.completed
             job.settlement_preview = compute_settlement(job)
             try:
-                await self.store.settle_payment(job.job_id)
+                payment_split = await self.store.settle_payment(job.job_id)
+                job.settlement_preview["payment_split"] = payment_split
+                job.settlement_preview["settlement_source"] = "compute_metering"
             except Exception:  # noqa: BLE001
                 logger.exception("settle_payment_failed", extra={"job_id": job.job_id})
             try:
