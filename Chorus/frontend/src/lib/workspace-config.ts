@@ -43,12 +43,21 @@ export function writeWorkspaceId(value: string): void {
 
 export function readWorkspaceToken(): string {
   if (typeof window === 'undefined') return ''
-  return sessionStorage.getItem(WORKSPACE_TOKEN_KEY)?.trim() ?? ''
+  return (
+    localStorage.getItem(WORKSPACE_TOKEN_KEY)?.trim() ||
+    sessionStorage.getItem(WORKSPACE_TOKEN_KEY)?.trim() ||
+    ''
+  )
 }
 
 export function writeWorkspaceToken(value: string): void {
   if (typeof window === 'undefined') return
   const trimmed = value.trim()
-  if (trimmed) sessionStorage.setItem(WORKSPACE_TOKEN_KEY, trimmed)
-  else sessionStorage.removeItem(WORKSPACE_TOKEN_KEY)
+  if (trimmed) {
+    localStorage.setItem(WORKSPACE_TOKEN_KEY, trimmed)
+    sessionStorage.setItem(WORKSPACE_TOKEN_KEY, trimmed)
+  } else {
+    localStorage.removeItem(WORKSPACE_TOKEN_KEY)
+    sessionStorage.removeItem(WORKSPACE_TOKEN_KEY)
+  }
 }

@@ -192,10 +192,6 @@ function deriveChatTitle(title: string, firstUserText: string | undefined): stri
   return seed ? seed : 'Untitled review'
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
-}
-
 export function ChorusAppShell() {
   const router = useRouter()
   const status = useNetworkStatus(4000)
@@ -533,10 +529,7 @@ export function ChorusAppShell() {
         {hasTurns ? (
           <ChorusChatStream turns={turns} />
         ) : (
-          <ChorusWelcome
-            status={status}
-            onPickPrompt={(nextPrompt) => setDraft(nextPrompt)}
-          />
+          <ChorusWelcome status={status} />
         )}
 
         <div className="shrink-0 px-4 pb-5 pt-2">
@@ -548,13 +541,6 @@ export function ChorusAppShell() {
                 completionModelTouchedRef.current = true
                 setCompletionModel(value)
               }}
-            />
-            <ReviewControls
-              voices={voices}
-              rounds={rounds}
-              availableReviewers={readyPeerCount}
-              onVoicesChange={setVoices}
-              onRoundsChange={setRounds}
             />
             {bottomHint && (
               <div className="mb-2 text-center font-mono text-[10.5px] text-white/55">
@@ -571,6 +557,8 @@ export function ChorusAppShell() {
               placeholder="Paste the plan, RFC, spec, or memo you want reviewed."
               voices={voices}
               rounds={rounds}
+              onVoicesChange={setVoices}
+              onRoundsChange={setRounds}
               attachments={attachments}
               onAttachFiles={(files) => {
                 setAttachmentError(null)
@@ -666,112 +654,6 @@ function CompletionModelPicker({
           })}
         </div>
       )}
-    </div>
-  )
-}
-
-function ReviewControls({
-  voices,
-  rounds,
-  availableReviewers,
-  onVoicesChange,
-  onRoundsChange,
-}: {
-  voices: number
-  rounds: number
-  availableReviewers: number
-  onVoicesChange: (value: number) => void
-  onRoundsChange: (value: number) => void
-}) {
-  return (
-    <div
-      className="mb-3 grid gap-3 sm:grid-cols-2"
-      style={{
-        background: 'rgba(255,255,255,0.025)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: 18,
-        padding: '14px 16px',
-      }}
-    >
-      <StepperControl
-        label="Voices"
-        help="How many reviewers Chorus should ask for."
-        value={voices}
-        min={1}
-        max={12}
-        onChange={onVoicesChange}
-      />
-      <StepperControl
-        label="Rounds"
-        help="How many passes the swarm should run before final synthesis."
-        value={rounds}
-        min={1}
-        max={6}
-        onChange={onRoundsChange}
-      />
-      <div className="sm:col-span-2 font-mono text-[10px] uppercase tracking-[0.12em] text-white/42">
-        Requesting {voices} voices over {rounds} rounds · {availableReviewers} browser reviewer{availableReviewers === 1 ? '' : 's'} visible
-      </div>
-    </div>
-  )
-}
-
-function StepperControl({
-  label,
-  help,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  help: string
-  value: number
-  min: number
-  max: number
-  onChange: (value: number) => void
-}) {
-  return (
-    <div
-      className="rounded-xl px-3 py-3"
-      style={{
-        background: 'rgba(255,255,255,0.02)',
-        border: '1px solid rgba(255,255,255,0.06)',
-      }}
-    >
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/55">
-          {label}
-        </span>
-        <span className="font-mono text-[13px] text-white/82">{value}</span>
-      </div>
-      <div className="mb-3 font-sans text-[11.5px] leading-relaxed text-white/55">
-        {help}
-      </div>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => onChange(clamp(value - 1, min, max))}
-          className="h-9 w-9 rounded-lg border border-white/10 bg-black/30 text-white/85"
-        >
-          -
-        </button>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          value={value}
-          onChange={(event) => onChange(clamp(Number(event.target.value), min, max))}
-          className="flex-1"
-        />
-        <button
-          type="button"
-          onClick={() => onChange(clamp(value + 1, min, max))}
-          className="h-9 w-9 rounded-lg border border-white/10 bg-black/30 text-white/85"
-        >
-          +
-        </button>
-      </div>
     </div>
   )
 }

@@ -1,38 +1,16 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { FileText, Rocket, ShieldAlert, Sparkles } from 'lucide-react'
+import { Rocket, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import type { NetworkStatus } from '@/hooks/use-network-status'
 import { getSavedOllamaIp, isOrchestratorConfigured } from '@/lib/api/orchestrator'
 
-const STARTER_PROMPTS = [
-  {
-    label: 'Launch plan',
-    icon: <Rocket className="h-3.5 w-3.5" />,
-    prompt:
-      'Review this launch plan. Identify blockers, weak rollback criteria, missing instrumentation, and the single most important change before launch.',
-  },
-  {
-    label: 'RFC',
-    icon: <FileText className="h-3.5 w-3.5" />,
-    prompt:
-      'Review this RFC. Surface the strongest arguments for approval, the sharpest objections, missing evidence, and your final recommendation.',
-  },
-  {
-    label: 'Risk memo',
-    icon: <ShieldAlert className="h-3.5 w-3.5" />,
-    prompt:
-      'Review this plan through a risk lens. Identify underestimated failure modes, mitigation gaps, and what should be escalated now.',
-  },
-]
-
 interface Props {
   status: NetworkStatus
-  onPickPrompt: (prompt: string) => void
 }
 
-export function ChorusWelcome({ status, onPickPrompt }: Props) {
+export function ChorusWelcome({ status }: Props) {
   const needsSetup = !isOrchestratorConfigured() && !getSavedOllamaIp()
 
   return (
@@ -69,7 +47,7 @@ export function ChorusWelcome({ status, onPickPrompt }: Props) {
                 Finish setup before opening the workspace
               </div>
               <div className="font-sans text-[12px] leading-relaxed text-white/60">
-                Connect Ollama, verify the control plane, and enter your workspace token in setup first.
+                Connect Ollama and verify the control plane. Chorus creates your workspace access automatically.
               </div>
             </div>
             <span
@@ -115,33 +93,6 @@ export function ChorusWelcome({ status, onPickPrompt }: Props) {
           {status.online > 0 ? `${status.online} reviewer${status.online === 1 ? '' : 's'} ready` : 'capacity warming up'}
         </div>
       </motion.div>
-
-      <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-3">
-        {STARTER_PROMPTS.map((entry, index) => (
-          <motion.button
-            key={entry.label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 + index * 0.05 }}
-            onClick={() => onPickPrompt(entry.prompt)}
-            className="group rounded-xl px-4 py-4 text-left transition-all"
-            style={{
-              background: 'rgba(255,255,255,0.025)',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}
-          >
-            <div className="mb-2 flex items-center gap-2 text-white/70 transition-colors group-hover:text-white">
-              {entry.icon}
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.1em]">
-                {entry.label}
-              </span>
-            </div>
-            <div className="font-sans text-[12px] leading-relaxed text-white/58">
-              {entry.prompt}
-            </div>
-          </motion.button>
-        ))}
-      </div>
     </div>
   )
 }

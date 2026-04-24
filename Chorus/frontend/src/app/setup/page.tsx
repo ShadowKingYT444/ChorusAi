@@ -23,6 +23,7 @@ import { StepShell } from '@/components/chorus/setup-wizard/step-shell'
 import {
   MODEL_NAME_KEY,
   MODEL_PUBLIC_URL_KEY,
+  establishWorkspaceSession,
   getEffectiveOrchestratorBase,
   getOrchestratorBaseOverride,
   getSavedOllamaIp,
@@ -179,6 +180,8 @@ export default function SetupPage() {
   const onRegenerateWorkspaceId = useCallback(() => {
     const next = regenerateWorkspaceId()
     setWorkspaceId(next)
+    setWorkspaceToken('')
+    writeWorkspaceToken('')
   }, [])
 
   const hydratedRef = useRef(false)
@@ -292,17 +295,22 @@ export default function SetupPage() {
       setProbeMessage('Generate or enter a workspace id before opening the workspace.')
       return
     }
-    if (!workspaceToken.trim()) {
-      setProbePhase('error')
-      setProbeMessage('Enter your workspace token for this browser session before continuing.')
-      return
-    }
     onConnectOrchestrator()
     const ok = await probeOrchestrator()
-    if (ok && typeof window !== 'undefined') {
+    if (!ok) return
+    try {
+      const session = await establishWorkspaceSession(workspaceId)
+      setWorkspaceId(session.workspaceId)
+      setWorkspaceToken(session.workspaceToken)
+    } catch (err) {
+      setProbePhase('error')
+      setProbeMessage(`Could not create workspace access token: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
+    if (typeof window !== 'undefined') {
       window.location.href = '/'
     }
-  }, [onConnectOrchestrator, probeOrchestrator, workspaceId, workspaceToken])
+  }, [onConnectOrchestrator, probeOrchestrator, workspaceId])
 
   const installCommands: Record<OsKey, { code: string; note?: string }> = {
     macos: {
@@ -586,7 +594,7 @@ export default function SetupPage() {
         icon={<Radio size={18} />}
         eyebrow={`Step ${totalSteps} of ${totalSteps}`}
         title="Connect your workspace"
-        subtitle="Save the control plane URL, keep the generated workspace id, and enter the token for this browser session."
+        subtitle="Save the control plane URL. Chorus will create a private workspace token for this browser automatically."
       >
         {!orchestratorBase.trim() && !orchestratorBaseFromEnv && (
           <Notice kind="info" title="No control plane configured">
@@ -626,7 +634,11 @@ export default function SetupPage() {
             </div>
             <input
               value={workspaceId}
-              onChange={(e) => setWorkspaceId(e.target.value)}
+              onChange={(e) => {
+                setWorkspaceId(e.target.value)
+                setWorkspaceToken('')
+                writeWorkspaceToken('')
+              }}
               placeholder="workspace-xxxxxxx"
               autoComplete="off"
               spellCheck={false}
@@ -636,19 +648,16 @@ export default function SetupPage() {
           <div>
             <label style={fieldLabelStyle}>Workspace token</label>
             <input
-              value={workspaceToken}
-              onChange={(e) => setWorkspaceToken(e.target.value)}
-              placeholder="enter token for this session"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              style={inputStyle}
+              value={workspaceToken ? 'Saved automatically' : 'Created on connect'}
+              readOnly
+              type="text"
+              style={{ ...inputStyle, color: 'rgba(255,255,255,0.55)' }}
             />
           </div>
         </div>
 
         <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.42)', lineHeight: 1.5 }}>
-          The workspace id stays in local storage so the same browser keeps its routing identity. The workspace token stays in session storage, so users need to enter it again when they come back in a new session.
+          The workspace id and token are saved in this browser, so random users can join without hunting for a manually provisioned token. Private deployments can still set fixed server-side workspace tokens.
         </p>
 
         <button

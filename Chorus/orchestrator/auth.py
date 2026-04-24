@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import os
+import re
 import secrets
 from dataclasses import dataclass
 
@@ -8,6 +12,8 @@ from fastapi import HTTPException, Request, WebSocket
 
 DEFAULT_BOOTSTRAP_WORKSPACE_ID = "local-dev"
 DEFAULT_BOOTSTRAP_TOKEN = "chorus-local-dev-token"
+GUEST_WORKSPACE_TOKEN_PREFIX = "cw1"
+_WORKSPACE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{2,80}$")
 
 
 @dataclass(frozen=True)
@@ -50,6 +56,50 @@ def workspace_auth_enabled() -> bool:
     return _env_flag("ORC_REQUIRE_WORKSPACE_AUTH", "1")
 
 
+def guest_workspaces_enabled() -> bool:
+    return _env_flag("ORC_ALLOW_GUEST_WORKSPACES", "1")
+
+
+def _workspace_signing_secret() -> bytes:
+    raw = (
+        os.getenv("ORC_WORKSPACE_SIGNING_SECRET", "").strip()
+        or os.getenv("ORC_BOOTSTRAP_TOKEN", DEFAULT_BOOTSTRAP_TOKEN).strip()
+    )
+    return raw.encode("utf-8")
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def normalize_workspace_id(workspace_id: str | None) -> str:
+    value = (workspace_id or "").strip()
+    if not value:
+        value = f"workspace-{secrets.token_hex(4)}"
+    if not _WORKSPACE_ID_RE.match(value):
+        raise HTTPException(status_code=400, detail="invalid_workspace_id")
+    return value
+
+
+def issue_guest_workspace_token(workspace_id: str) -> str:
+    workspace_id = normalize_workspace_id(workspace_id)
+    nonce = secrets.token_urlsafe(12)
+    payload = f"{workspace_id}.{nonce}"
+    sig = hmac.new(_workspace_signing_secret(), payload.encode("utf-8"), hashlib.sha256).digest()
+    return f"{GUEST_WORKSPACE_TOKEN_PREFIX}.{nonce}.{_b64url(sig)}"
+
+
+def _valid_guest_workspace_token(workspace_id: str, token: str | None) -> bool:
+    if not guest_workspaces_enabled() or not token:
+        return False
+    parts = token.split(".")
+    if len(parts) != 3 or parts[0] != GUEST_WORKSPACE_TOKEN_PREFIX or not parts[1] or not parts[2]:
+        return False
+    payload = f"{workspace_id}.{parts[1]}"
+    expected = _b64url(hmac.new(_workspace_signing_secret(), payload.encode("utf-8"), hashlib.sha256).digest())
+    return secrets.compare_digest(expected, parts[2])
+
+
 def _extract_bearer_token(value: str | None) -> str | None:
     if value is None:
         return None
@@ -72,13 +122,18 @@ def authenticate_workspace(workspace_id: str | None, bearer_token: str | None) -
         raise HTTPException(status_code=401, detail="missing_workspace")
     if not bearer_token:
         raise HTTPException(status_code=401, detail="missing_token")
+    workspace_id = normalize_workspace_id(workspace_id)
     allowed_tokens = configured.get(workspace_id)
-    if not allowed_tokens:
-        raise HTTPException(status_code=403, detail="unknown_workspace")
-    for allowed in allowed_tokens:
-        if secrets.compare_digest(allowed, bearer_token):
+    if allowed_tokens:
+        for allowed in allowed_tokens:
+            if secrets.compare_digest(allowed, bearer_token):
+                return WorkspacePrincipal(workspace_id=workspace_id)
+        if _valid_guest_workspace_token(workspace_id, bearer_token):
             return WorkspacePrincipal(workspace_id=workspace_id)
-    raise HTTPException(status_code=403, detail="invalid_token")
+        raise HTTPException(status_code=403, detail="invalid_token")
+    if _valid_guest_workspace_token(workspace_id, bearer_token):
+        return WorkspacePrincipal(workspace_id=workspace_id)
+    raise HTTPException(status_code=403, detail="unknown_workspace")
 
 
 def require_workspace_http(request: Request) -> WorkspacePrincipal:

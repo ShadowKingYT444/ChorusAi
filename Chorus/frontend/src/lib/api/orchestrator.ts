@@ -1,4 +1,4 @@
-import { readWorkspaceId, readWorkspaceToken } from '@/lib/workspace-config'
+import { getOrCreateWorkspaceId, readWorkspaceId, readWorkspaceToken, writeWorkspaceToken } from '@/lib/workspace-config'
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed'
 export type PruneStatus = 'valid' | 'suspect' | 'pruned'
@@ -385,10 +385,33 @@ function getWorkspaceCredentials(): { workspaceId: string; workspaceToken: strin
   }
 }
 
+export async function establishWorkspaceSession(workspaceId?: string): Promise<{ workspaceId: string; workspaceToken: string }> {
+  const baseUrl = ensureBaseUrl()
+  const id = workspaceId?.trim() || getOrCreateWorkspaceId()
+  const existing = readWorkspaceToken()
+  if (!workspaceId && id && existing) return { workspaceId: id, workspaceToken: existing }
+
+  const res = await fetch(`${baseUrl}/workspaces/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ workspace_id: id }),
+  })
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(`${res.status} ${res.statusText}: ${detail}`)
+  }
+  const body = (await res.json()) as { workspace_id: string; workspace_token: string }
+  writeWorkspaceToken(body.workspace_token)
+  return { workspaceId: body.workspace_id, workspaceToken: body.workspace_token }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = ensureBaseUrl()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), DEFAULT_TIMEOUT_MS)
+  if (path !== '/workspaces/session') {
+    await establishWorkspaceSession()
+  }
   const { workspaceId, workspaceToken } = getWorkspaceCredentials()
   try {
     const res = await fetch(`${baseUrl}${path}`, {
@@ -418,6 +441,7 @@ async function requestFormData<T>(path: string, formData: FormData): Promise<T> 
     () => controller.abort(new DOMException('Request timed out', 'TimeoutError')),
     DEFAULT_TIMEOUT_MS,
   )
+  await establishWorkspaceSession()
   const { workspaceId, workspaceToken } = getWorkspaceCredentials()
   try {
     const headers: Record<string, string> = {}
@@ -449,7 +473,11 @@ export async function getAvailableModels(): Promise<AvailableModelsResponse> {
 
 export function getSignalingWsUrl(): string {
   const base = ensureBaseUrl()
-  return base.replace(/^http/i, 'ws') + '/ws/signaling'
+  const url = new URL(base.replace(/^http/i, 'ws') + '/ws/signaling')
+  const { workspaceId, workspaceToken } = getWorkspaceCredentials()
+  if (workspaceId) url.searchParams.set('workspace_id', workspaceId)
+  if (workspaceToken) url.searchParams.set('token', workspaceToken)
+  return url.toString()
 }
 
 export function getJobEventsWsUrl(jobId: string): string {

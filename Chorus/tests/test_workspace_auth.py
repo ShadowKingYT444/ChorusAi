@@ -57,6 +57,42 @@ def test_jobs_require_workspace_auth_headers() -> None:
         assert response.json()["detail"] == "missing_workspace"
 
 
+def test_self_service_workspace_session_can_create_scoped_jobs() -> None:
+    with TestClient(app) as client:
+        session = client.post("/workspaces/session", json={"workspace_id": "workspace-browser-user"})
+        assert session.status_code == 200, session.text
+        workspace = session.json()
+        assert workspace["workspace_id"] == "workspace-browser-user"
+        assert workspace["workspace_token"].startswith("cw1.")
+
+        create = client.post(
+            "/jobs",
+            headers=_auth_headers(workspace["workspace_id"], workspace["workspace_token"]),
+            json={
+                "context": "ctx",
+                "prompt": "prompt",
+                "agent_count": 1,
+                "rounds": 1,
+                "payout": 0.0,
+            },
+        )
+        assert create.status_code == 200, create.text
+        assert create.json()["workspace_id"] == "workspace-browser-user"
+
+        wrong_workspace = client.post(
+            "/jobs",
+            headers=_auth_headers("other-workspace", workspace["workspace_token"]),
+            json={
+                "context": "ctx",
+                "prompt": "prompt",
+                "agent_count": 1,
+                "rounds": 1,
+                "payout": 0.0,
+            },
+        )
+        assert wrong_workspace.status_code == 403
+
+
 def test_job_reads_are_scoped_to_the_authenticated_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ORC_WORKSPACE_TOKENS", "workspace-a=token-a,workspace-b=token-b")
     monkeypatch.setenv("ORC_ALLOW_BOOTSTRAP_WORKSPACE", "0")

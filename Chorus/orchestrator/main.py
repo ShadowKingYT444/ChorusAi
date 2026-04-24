@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
 from orchestrator import billing
 from orchestrator.attachments import build_attachment_context, build_attachment_record, persist_upload
-from orchestrator.auth import require_workspace_http, require_workspace_websocket
+from orchestrator.auth import issue_guest_workspace_token, normalize_workspace_id, require_workspace_http, require_workspace_websocket
 from orchestrator.broadcast_completions import post_chat_completion
 from orchestrator.engine import RoundEngine
 from orchestrator.lifespan import lifespan
@@ -422,6 +422,24 @@ async def root() -> dict[str, str]:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/workspaces/session")
+async def create_workspace_session(request: Request) -> dict[str, str]:
+    """Issue a self-service workspace token for a browser/user.
+
+    Configured workspace tokens still work for private deployments, but public
+    users should not need an out-of-band token just to launch their own scoped
+    reviews. The returned token is signed by the orchestrator and accepted only
+    for the returned workspace id.
+    """
+    body: dict = {}
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    workspace_id = normalize_workspace_id(body.get("workspace_id") if isinstance(body, dict) else None)
+    return {"workspace_id": workspace_id, "workspace_token": issue_guest_workspace_token(workspace_id)}
 
 
 @app.get("/identity")

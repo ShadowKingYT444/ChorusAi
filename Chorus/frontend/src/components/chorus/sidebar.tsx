@@ -38,7 +38,7 @@ export function ChorusSidebar({ onNewChat, onSelectChat, activeId }: Props) {
 
   return (
     <aside
-      className="flex flex-col h-full w-[260px] shrink-0"
+      className="relative z-10 flex flex-col h-full w-[260px] shrink-0"
       style={{
         background: 'rgba(10,10,12,0.78)',
         borderRight: '1px solid rgba(255,255,255,0.06)',

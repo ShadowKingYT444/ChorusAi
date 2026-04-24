@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  establishWorkspaceSession,
   getEffectiveOrchestratorBase,
   getOrCreateJoinTabPeerId,
   getOrchestratorBaseOverride,
@@ -323,7 +324,7 @@ export default function JoinLanPage() {
     )
   }, [modelPublicUrl, persistModelUrl])
 
-  const join = useCallback(() => {
+  const join = useCallback(async () => {
     setError(null)
     const trimmed = baseInput.trim()
     const resolvedBase =
@@ -355,6 +356,13 @@ export default function JoinLanPage() {
 
     persistModelUrl(publicModelBase)
     setPhase('connecting')
+    try {
+      await establishWorkspaceSession()
+    } catch (err) {
+      setError(`Could not create workspace access: ${err instanceof Error ? err.message : String(err)}`)
+      setPhase('error')
+      return
+    }
     const peerId = getOrCreateJoinTabPeerId()
     setMyPeerId(peerId)
 

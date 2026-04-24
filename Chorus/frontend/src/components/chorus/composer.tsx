@@ -18,6 +18,8 @@ interface Props {
   placeholder?: string
   voices: number
   rounds: number
+  onVoicesChange: (value: number) => void
+  onRoundsChange: (value: number) => void
   attachments: AttachmentRecord[]
   onAttachFiles: (files: File[]) => void
   onRemoveAttachment: (id: string) => void
@@ -34,6 +36,8 @@ export function ChorusComposer({
   placeholder = 'Paste the plan, RFC, or brief you want reviewed…',
   voices,
   rounds,
+  onVoicesChange,
+  onRoundsChange,
   attachments,
   onAttachFiles,
   onRemoveAttachment,
@@ -103,15 +107,11 @@ export function ChorusComposer({
           backdropFilter: 'blur(14px)',
         }}
       >
-        <div className="mx-4 mt-3 flex flex-wrap items-center gap-2 border-b border-white/6 pb-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-white/72">
-            {voices} voices
-          </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-white/72">
-            {rounds} rounds
-          </span>
+        <div className="mx-4 mt-3 grid gap-2 border-b border-white/6 pb-2 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+          <MiniSlider label="Voices" value={voices} min={1} max={12} onChange={onVoicesChange} />
+          <MiniSlider label="Rounds" value={rounds} min={1} max={6} onChange={onRoundsChange} />
           {attachments.length > 0 && (
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-white/72">
+            <span className="justify-self-start rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-white/62 sm:justify-self-end">
               {attachments.length} file{attachments.length === 1 ? '' : 's'}
             </span>
           )}
@@ -193,8 +193,8 @@ export function ChorusComposer({
             <Sparkles className="h-4 w-4" />
           </button>
 
-          <div className="min-w-0 flex-1 px-1 font-sans text-[11.5px] text-white/42">
-            Drop files here or attach notes, then ask for the strongest case for and against the plan, what evidence is missing, and the clearest next move.
+          <div className="min-w-0 flex-1 px-1 font-sans text-[11.5px] text-white/38">
+            Attach files or paste context. Enter sends, Shift+Enter adds a line.
           </div>
 
           <button
@@ -225,6 +225,44 @@ export function ChorusComposer({
           : 'Control plane unreachable · check the configured URL'}
       </div>
     </motion.div>
+  )
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function MiniSlider({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="flex min-w-0 items-center gap-2 rounded-lg border border-white/8 bg-white/[0.025] px-2.5 py-1.5">
+      <span className="w-12 shrink-0 font-mono text-[9.5px] uppercase tracking-[0.11em] text-white/48">
+        {label}
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(clamp(Number(event.target.value), min, max))}
+        className="min-w-0 flex-1"
+        style={{ accentColor: '#b8c7ff' }}
+      />
+      <span className="w-5 shrink-0 text-right font-mono text-[11px] tabular-nums text-white/76">
+        {value}
+      </span>
+    </label>
   )
 }
 
